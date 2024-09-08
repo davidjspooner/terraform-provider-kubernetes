@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidjspooner/dsflow/pkg/duration"
-	"github.com/davidjspooner/dsflow/pkg/retry"
+	"github.com/davidjspooner/dsflow/pkg/job"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -20,13 +19,13 @@ type RetryModel struct {
 	Timeout     *string   `tfsdk:"timeout"`
 }
 
-func (rs *RetryModel) NewHelper(defaults *retry.Helper) (*retry.Helper, error) {
+func (rs *RetryModel) NewHelper(defaults *job.RetryHelper) (*job.RetryHelper, error) {
 
 	if rs == nil {
 		rs = &RetryModel{}
 	}
 
-	var rh retry.Helper
+	var rh job.RetryHelper
 	if defaults != nil {
 		rh = *defaults
 	}
@@ -61,7 +60,7 @@ func (rs *RetryModel) NewHelper(defaults *retry.Helper) (*retry.Helper, error) {
 
 	//parse interval ( default is 10s 20s 30s )
 	if rs.Interval != nil && *rs.Interval != "" {
-		rh.Interval, err = duration.ParseList(*rs.Interval)
+		rh.Interval, err = job.ParseDurationList(*rs.Interval)
 		if err != nil {
 			return nil, err
 		}

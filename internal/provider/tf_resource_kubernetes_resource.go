@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/davidjspooner/dsflow/pkg/retry"
+	"github.com/davidjspooner/dsflow/pkg/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 
 	"github.com/davidjspooner/dsvalue/pkg/path"
@@ -89,7 +89,7 @@ func (r *ResourceResource) newCrudHelper(retryModel *kresource.RetryModel) (*kre
 	} else if r.provider.DefaultRetry != nil {
 		helper.RetryHelper = r.provider.DefaultRetry
 	} else {
-		helper.RetryHelper = &retry.Helper{}
+		helper.RetryHelper = &job.RetryHelper{}
 	}
 	return helper, nil
 }

@@ -6,7 +6,7 @@ package provider
 import (
 	"context"
 
-	"github.com/davidjspooner/dsflow/pkg/retry"
+	"github.com/davidjspooner/dsflow/pkg/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -30,7 +30,7 @@ type KubernetesProvider struct {
 	version string
 
 	Shared       kresource.Shared
-	DefaultRetry *retry.Helper
+	DefaultRetry *job.RetryHelper
 }
 
 // KubernetesProviderModel describes the provider data model.
@@ -104,7 +104,7 @@ func (p *KubernetesProvider) Configure(ctx context.Context, req provider.Configu
 			resp.Diagnostics.AddError("Failed to create default retry helper", err.Error())
 		}
 	} else {
-		p.DefaultRetry = &retry.Helper{}
+		p.DefaultRetry = &job.RetryHelper{}
 	}
 
 	resp.DataSourceData = p

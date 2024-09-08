@@ -6,8 +6,7 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/davidjspooner/dsflow/pkg/retry"
-
+	"github.com/davidjspooner/dsflow/pkg/job"
 	"github.com/davidjspooner/dsvalue/pkg/path"
 	"github.com/davidjspooner/dsvalue/pkg/reflected"
 	"github.com/davidjspooner/dsvalue/pkg/value"
@@ -15,7 +14,7 @@ import (
 
 type CrudHelper struct {
 	Plan, Actual, State ResourceMap
-	RetryHelper         *retry.Helper
+	RetryHelper         *job.RetryHelper
 	Shared              *Shared
 }
 
