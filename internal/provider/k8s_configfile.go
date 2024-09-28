@@ -150,6 +150,12 @@ func (config *K8sConfig) WriteToFile(filename string) error {
 		}
 		return fmt.Errorf("error writing file: %w", err)
 	}
+
+	err = os.Chmod(filename, 0600)
+	if err != nil {
+		return fmt.Errorf("error changing file permissions: %w", err)
+	}
+
 	return nil
 }
 
