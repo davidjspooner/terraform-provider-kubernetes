@@ -2,7 +2,7 @@ terraform {
   required_version = ">= 0.12"
   required_providers {
     kubernetes = {
-      source = "registry.terraform.io/davidjspooner/kubernetes"
+      source = "dstower.home.dolbyn.com/davidjspooner/kubernetes"
     }
   }
 }
