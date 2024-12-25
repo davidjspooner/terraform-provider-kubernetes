@@ -28,7 +28,7 @@ func TestRetryHelper(t *testing.T) {
 		FastFail:    PtrTo([]string{"abort"}),
 		Pause:       PtrTo("2s"),
 		Interval:    PtrTo("1s,2s,3s"),
-		Timeout:     PtrTo("10s"),
+		Timeout:     PtrTo("6s"),
 	}
 
 	retryHelper, err := retrySchema.NewHelper(nil)
@@ -87,13 +87,9 @@ func TestRetryHelper(t *testing.T) {
 		},
 	}
 	for testNumber, tc := range testCases {
-		err := retryHelper.Retry(ctx, tc.fn)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
 		ctx, cancel := retryHelper.SetDeadline(ctx)
-		_ = ctx
 		defer cancel()
+		err := retryHelper.Retry(ctx, tc.fn)
 		if !SameErrorMessages(err, tc.expectedError) {
 			t.Errorf("Test #%d : RetryHelper.Retry() = [%v], expected [%s]", testNumber+1, err, tc.expectedError)
 		}

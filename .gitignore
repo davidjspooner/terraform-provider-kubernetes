@@ -1,39 +1,16 @@
-unused/
-*.dll
-*.exe
 .DS_Store
-example.tf
 terraform.tfplan
-terraform.tfstate
-bin/
 dist/
-modules-dev/
-/pkg/
-website/.vagrant
-website/.bundle
-website/build
-website/node_modules
-.vagrant/
-*.backup
-./*.tfstate
+*.tfstate
 .terraform/
 *.log
 *.bak
+*.backup
 *~
 .*.swp
-.idea
-*.iml
-*.test
-*.iml
-
-website/vendor
-
-# Test exclusions
-!command/test-fixtures/**/*.tfstate
-!command/test-fixtures/**/.terraform/
-
-# Keep windows files with windows line endings
-*.winfile eol=crlf
-.copywrite.hcl
-
 __debug_bin*
+bin/*
+.env
+build.py
+publish.sh
+
