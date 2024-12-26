@@ -6,7 +6,9 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -25,7 +27,9 @@ import (
 var (
 	// these will be set by the goreleaser configuration
 	// to appropriate values for the compiled binary.
-	version string = "dev"
+	Version string = "dev"
+	BuiltAt string = "unknown"
+	Commit  string = "unknown"
 
 	// goreleaser can pass other information to the main package, such as the specific commit
 	// https://goreleaser.com/cookbooks/using-main.version/
@@ -33,9 +37,16 @@ var (
 
 func main() {
 	var debug bool
+	var doVersion bool
 
 	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
+	flag.BoolVar(&doVersion, "version", false, "print the version and exit")
 	flag.Parse()
+
+	if doVersion {
+		fmt.Printf("Version : %s\nBuilt at: %s\nCommit  : %s\n", Version, BuiltAt, Commit)
+		os.Exit(0)
+	}
 
 	opts := providerserver.ServeOpts{
 		// TODO: Update this string with the published name of your provider.
@@ -45,7 +56,7 @@ func main() {
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), provider.New(version), opts)
+	err := providerserver.Serve(context.Background(), provider.New(Version), opts)
 
 	if err != nil {
 		log.Fatal(err.Error())

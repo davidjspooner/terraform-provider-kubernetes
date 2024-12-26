@@ -9,7 +9,7 @@ dist/
 *~
 .*.swp
 __debug_bin*
-bin/*
+bin/
 .env
 build.py
 publish.sh
