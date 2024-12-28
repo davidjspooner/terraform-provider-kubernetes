@@ -59,7 +59,7 @@ release:
   disable: true
 uploads:
   - name: dstower.homelab.dolbyn.com/binaries
-    target: https://dstower.home.dolbyn.com/binaries/davidjspooner/{{ .ProjectName }}/{{ .Version }}/
+    target: https://dstower.home.dolbyn.com/binary/davidjspooner/{{ .ProjectName }}/{{ .Version }}/
     mode: archive
     checksum: true
     signature: true
