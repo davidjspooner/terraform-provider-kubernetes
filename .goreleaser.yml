@@ -37,9 +37,9 @@ checksum:
   #extra_files:
   #  - glob: 'terraform-registry-manifest.json'
   #    name_template: '{{ .ProjectName }}_{{ .Version }}_manifest.json'
-  #name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
   algorithm: sha256
-  split: true
+  #split: false
 signs:
   - artifacts: checksum
     args:
@@ -48,7 +48,6 @@ signs:
       - "--batch"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}" # set this environment variable for your signing key
-      - "--armor"
       - "--output"
       - "${signature}"
       - "--detach-sign"
@@ -57,3 +56,10 @@ changelog:
   disable: true
 release:
   disable: true
+uploads:
+  - name: dstower.homelab.dolbyn.com/binaries
+    target: https://dstower.homelab.dolbyn.com/binaries/{{ .ProjectName }}/{{ .Version }}/
+    mode: archive
+    checksum: true
+    signature: true
+
