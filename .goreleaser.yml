@@ -57,6 +57,11 @@ changelog:
   disable: true
 release:
   disable: true
+before_publish:
+  - artifacts:
+    - archive
+    cmd: ./upload_index.py {{ .Version }} {{ .ProjectName }} {{ .OS }} {{ .Arch }}
+    output: true  
 uploads:
   - name: dstower.homelab.dolbyn.com/binaries
     target: https://dstower.home.dolbyn.com/binary/davidjspooner/{{ .ProjectName }}/{{ .Version }}/
