@@ -10,46 +10,47 @@ import (
 	"github.com/davidjspooner/dsvalue/pkg/path"
 	"github.com/davidjspooner/dsvalue/pkg/reflected"
 	"github.com/davidjspooner/dsvalue/pkg/value"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type CrudHelper struct {
-	Plan, Actual, State ResourceMap
+	Plan, Actual, State unstructured.Unstructured
 	RetryHelper         *job.RetryHelper
 	Shared              *Shared
+}
+
+func GetKey(r unstructured.Unstructured) *Key {
+	if r.Object == nil {
+		return nil
+	}
+	k := Key{}
+	k.ApiVersion = r.GetAPIVersion()
+	k.Kind = r.GetKind()
+	k.MetaData.Name = r.GetName()
+	k.MetaData.Namespace = r.GetNamespace()
+	return &k
 }
 
 func (helper *CrudHelper) Read(ctx context.Context) error {
 	ctx, cancel := helper.RetryHelper.SetDeadline(ctx)
 	defer cancel()
-	err := helper.State.ForEach(func(key *Key, r *Resource) error {
-		u, err3 := helper.Shared.Get(ctx, &r.Key)
-		if ErrorIsNotFound(err3) {
-			helper.State.Delete(key)
-			return nil
-		}
-		//TODO check if it is what we want
-		_ = u
+	key := GetKey(helper.Plan)
+	var err3 error
+	helper.State, err3 = helper.Shared.Get(ctx, key)
+	if ErrorIsNotFound(err3) {
+		helper.State = unstructured.Unstructured{}
 		return nil
-	})
-	return err
+	}
+	//TODO check if it is what we want
+	return nil
 }
 func (helper *CrudHelper) ApplyPlan(ctx context.Context) error {
 	ctx, cancel := helper.RetryHelper.SetDeadline(ctx)
 	defer cancel()
 
-	toCreateOrUpdate := helper.Plan.Clone()
+	key := GetKey(helper.Plan)
 	err := helper.RetryHelper.Retry(ctx, func(ctx context.Context, attempt int) error {
-		var err2 error
-		toCreateOrUpdate.ForEach(func(key *Key, r *Resource) error {
-			err3 := helper.Shared.Apply(ctx, &r.Key, r.Unstructured)
-			if err3 == nil {
-				toCreateOrUpdate.Detach(key)
-			}
-			if err3 != nil && err2 == nil {
-				err2 = err3
-			}
-			return nil
-		})
+		err2 := helper.Shared.Apply(ctx, key, helper.Plan)
 		return err2
 	})
 	return err
@@ -58,13 +59,13 @@ func (helper *CrudHelper) ApplyPlan(ctx context.Context) error {
 func (helper *CrudHelper) CreateFromPlan(ctx context.Context) error {
 	return helper.ApplyPlan(ctx)
 }
-func (helper *CrudHelper) Diff(ctx context.Context, a, b *Resource) ([]string, error) {
+func (helper *CrudHelper) Diff(ctx context.Context, a, b unstructured.Unstructured) ([]string, error) {
 	var diffs []string
-	leftRoot, err := reflected.NewReflectedObject(reflect.ValueOf(a.Unstructured.Object), nil)
+	leftRoot, err := reflected.NewReflectedObject(reflect.ValueOf(a), nil)
 	if err != nil {
 		return nil, err
 	}
-	rightRoot, err := reflected.NewReflectedObject(reflect.ValueOf(b.Unstructured.Object), nil)
+	rightRoot, err := reflected.NewReflectedObject(reflect.ValueOf(b), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -90,91 +91,63 @@ func DiffContainsInvariant(diffs []string) bool {
 func (helper *CrudHelper) Update(ctx context.Context) error {
 
 	//check for invariant violations
-	needRecreate := ResourceMap{}
+	needRecreate := false
 
-	err := helper.Plan.ForEach(func(key *Key, r *Resource) error {
-		stateResource, ok := helper.State.Lookup(key)
-		if !ok {
-			return nil
-		}
-		diffs, _ := helper.Diff(ctx, stateResource, r)
+	key := GetKey(helper.State)
+	actual, err := helper.Shared.Get(ctx, key)
+	if err == nil {
+		diffs, _ := helper.Diff(ctx, actual, helper.Plan)
 		if DiffContainsInvariant(diffs) {
-			needRecreate.Attach(r)
+			needRecreate = true
 		}
 		return nil
-	})
+	}
+
 	if err != nil {
 		return err
 	}
-	if needRecreate.Len() > 0 {
+	if needRecreate {
 		//delete things that need to be recreated
-		err = needRecreate.ForEach(func(key *Key, r *Resource) error {
-			err := helper.Shared.Delete(ctx, &r.Key)
-			if err != nil && !ErrorIsNotFound(err) {
-				return nil
-			}
-			return err
-		})
-		if err != nil {
-			return err
-		}
-		//wait for them to be gone
-		err = needRecreate.ForEach(func(key *Key, r *Resource) error {
-			_, err := helper.Shared.Get(ctx, &r.Key)
-			if err != nil {
-				return nil
-			}
-			return fmt.Errorf("resource still exists")
-		})
+		err := helper.delete(ctx, key)
 		if err != nil {
 			return err
 		}
 	}
 	return helper.ApplyPlan(ctx)
 }
-func (helper *CrudHelper) DeleteState(ctx context.Context) error {
-	ctx, cancel := helper.RetryHelper.SetDeadline(ctx)
-	defer cancel()
 
-	//try and delete everything
-	toDelete := helper.State.Clone()
+func (helper *CrudHelper) delete(ctx context.Context, key *Key) error {
 	err := helper.RetryHelper.Retry(ctx, func(ctx context.Context, attempt int) error {
-		var errList ErrorList
-		toDelete.ForEach(func(key *Key, r *Resource) error {
-			err3 := helper.Shared.Delete(ctx, &r.Key)
-			if err3 == nil || ErrorIsNotFound(err3) {
-				toDelete.Delete(key)
-				return nil
-			}
-			errList = append(errList, err3)
-			return nil
-		})
-		if len(errList) > 0 {
-			return errList
+		err := helper.Shared.Delete(ctx, key)
+		if err != nil && !ErrorIsNotFound(err) {
+			return err
 		}
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-
-	//and then wait to check if they are gone
 	err = helper.RetryHelper.Retry(ctx, func(ctx context.Context, attempt int) error {
-		var errList ErrorList
-		helper.State.ForEach(func(key *Key, r *Resource) error {
-			err3 := helper.Shared.Delete(ctx, &r.Key)
-			if err3 == nil || ErrorIsNotFound(err3) {
-				helper.State.Delete(key)
-				return nil
-			}
-			errList = append(errList, err3)
+		//wait for them to be gone
+		_, err := helper.Shared.Get(ctx, key)
+		if err != nil {
 			return nil
-		})
-		if len(errList) > 0 {
-			return errList
 		}
-		return nil
+		return fmt.Errorf("resource still exists")
 	})
+	return err
+}
+
+func (helper *CrudHelper) DeleteState(ctx context.Context) error {
+	ctx, cancel := helper.RetryHelper.SetDeadline(ctx)
+	defer cancel()
+
+	key := GetKey(helper.State)
+	err := helper.delete(ctx, key)
+	if err != nil {
+		return err
+	}
+	helper.State = unstructured.Unstructured{}
 
 	return err
 }

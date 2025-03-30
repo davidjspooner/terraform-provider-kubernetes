@@ -2,26 +2,47 @@ package kresource
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"io"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func ParseResourceYaml(content string) (*Resource, error) {
-	r := &Resource{}
+func ParseYamlManifestList(content string) ([]unstructured.Unstructured, error) {
+	var ul []unstructured.Unstructured
 
 	d := yaml.NewDecoder(strings.NewReader(content))
-	//d.KnownFields(true)
-	err := d.Decode(&r.Unstructured.Object)
-	if err != nil {
-		return nil, err
+	for {
+		u := unstructured.Unstructured{}
+
+		//d.KnownFields(true)
+		err := d.Decode(&u)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		ul = append(ul, u)
 	}
-	r.Key.ApiVersion = r.Unstructured.GetAPIVersion()
-	r.Key.Kind = r.Unstructured.GetKind()
-	r.Key.MetaData.Name = r.Unstructured.GetName()
-	r.Key.MetaData.Namespace = r.Unstructured.GetNamespace()
-	return r, nil
+	if len(ul) == 0 {
+		return nil, errors.New("no resources found")
+	}
+	return ul, nil
+}
+
+func ParseSingleYamlManifest(content string) (unstructured.Unstructured, error) {
+	ul, err := ParseYamlManifestList(content)
+	if err != nil {
+		return unstructured.Unstructured{}, err
+	}
+	if len(ul) != 1 {
+		return unstructured.Unstructured{}, fmt.Errorf("expected one resource, found %d", len(ul))
+	}
+	return ul[0], nil
 }
 
 func FormatYaml(u unstructured.Unstructured) (string, error) {

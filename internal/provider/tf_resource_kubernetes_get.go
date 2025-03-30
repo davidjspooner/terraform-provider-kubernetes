@@ -21,7 +21,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &KubernetesGet{}
 
-func NewReadyResource() resource.Resource {
+func NewResourceGet() resource.Resource {
 	r := &KubernetesGet{}
 	return r
 }
@@ -31,8 +31,8 @@ type KubernetesGet struct {
 	provider *KubernetesProvider
 }
 
-// ReadyResourceModel describes the resource data model.
-type ReadyResourceModel struct {
+// GetResourceModel describes the resource data model.
+type GetResourceModel struct {
 	ApiVersion types.String        `tfsdk:"api_version"`
 	Kind       types.String        `tfsdk:"kind"`
 	Metadata   *ShortMetadataModel `tfsdk:"metadata"`
@@ -54,7 +54,7 @@ func (r *KubernetesGet) Metadata(ctx context.Context, req resource.MetadataReque
 func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Poll a resource until an atteribute matches a regex",
+		MarkdownDescription: "Wait until a resource attribute matches a regex",
 
 		Attributes: map[string]schema.Attribute{
 			"state": schema.StringAttribute{
@@ -109,7 +109,7 @@ func (r *KubernetesGet) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 }
 
-func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, data *ReadyResourceModel) (*CaptureMap, error) {
+func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, data *GetResourceModel) (*CaptureMap, error) {
 
 	var captureMap CaptureMap
 	var err error
@@ -133,7 +133,7 @@ func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, 
 	return &captureMap, nil
 }
 
-func (r *KubernetesGet) checvaluesWithRetry(ctx context.Context, key *kresource.Key, data *ReadyResourceModel, diags *diag.Diagnostics) {
+func (r *KubernetesGet) checvaluesWithRetry(ctx context.Context, key *kresource.Key, data *GetResourceModel, diags *diag.Diagnostics) {
 
 	var savedCaptureMap *CaptureMap
 
@@ -158,7 +158,7 @@ func (r *KubernetesGet) checvaluesWithRetry(ctx context.Context, key *kresource.
 }
 
 func (r *KubernetesGet) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data ReadyResourceModel
+	var data GetResourceModel
 
 	// Read Terraform plan data into the model
 	diags := req.Plan.Get(ctx, &data)
@@ -183,7 +183,7 @@ func (r *KubernetesGet) Create(ctx context.Context, req resource.CreateRequest, 
 }
 
 func (r *KubernetesGet) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data ReadyResourceModel
+	var data GetResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -215,7 +215,7 @@ func (r *KubernetesGet) Read(ctx context.Context, req resource.ReadRequest, resp
 }
 
 func (r *KubernetesGet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data ReadyResourceModel
+	var data GetResourceModel
 
 	// Read Terraform plan data into the model
 	diags := req.Plan.Get(ctx, &data)
@@ -244,7 +244,7 @@ func (r *KubernetesGet) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 	//effectily a no-op - we just reset the output vars
 
-	var data ReadyResourceModel
+	var data GetResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	var subDiags diag.Diagnostics
@@ -258,7 +258,7 @@ func (r *KubernetesGet) Delete(ctx context.Context, req resource.DeleteRequest, 
 	resp.State.Set(ctx, &data)
 }
 
-func (r *KubernetesGet) retry(ctx context.Context, data *ReadyResourceModel, task func(context.Context, int) error) error {
+func (r *KubernetesGet) retry(ctx context.Context, data *GetResourceModel, task func(context.Context, int) error) error {
 	defaultHelper, err := data.Retry.NewHelper(nil)
 	if err != nil {
 		return err

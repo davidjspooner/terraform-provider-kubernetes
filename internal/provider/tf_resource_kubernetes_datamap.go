@@ -9,6 +9,7 @@ import (
 
 	"github.com/davidjspooner/dsflow/pkg/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -16,44 +17,94 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &GenericResource{}
-var _ resource.ResourceWithImportState = &GenericResource{}
+var _ resource.Resource = &DataMap{}
+var _ resource.ResourceWithImportState = &DataMap{}
 
-func NewGenericResource() resource.Resource {
-	return &GenericResource{}
+func NewConfigMap() resource.Resource {
+	return &DataMap{secret: false}
 }
 
-// GenericResource defines the resource implementation.
-type GenericResource struct {
+func NewSecret() resource.Resource {
+	return &DataMap{secret: true}
+}
+
+// DataMap defines the resource implementation.
+type DataMap struct {
 	provider *KubernetesProvider
+	secret   bool
 }
 
-// GenericResourceModel describes the resource data model.
-type GenericResourceModel struct {
-	Manifest types.String          `tfsdk:"manifest"`
-	Retry    *kresource.RetryModel `tfsdk:"retry"`
+// DataMapModel describes the resource data model.
+type DataMapModel struct {
+	MetaData  kresource.MetaData    `tfsdk:"metadata"`
+	Type      types.String          `tfsdk:"type"`
+	Immutable types.Bool            `tfsdk:"immutable"`
+	Data      types.Map             `tfsdk:"data"`
+	Retry     *kresource.RetryModel `tfsdk:"retry"`
 }
 
-func (r *GenericResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_resource"
+func (dmm *DataMapModel) Manifest(secret bool) (unstructured.Unstructured, error) {
+	var manifest unstructured.Unstructured
+	manifest.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata": map[string]interface{}{
+			"name":        dmm.MetaData.Name,
+			"namespace":   dmm.MetaData.Namespace,
+			"labels":      dmm.MetaData.Labels,
+			"annotations": dmm.MetaData.Annotations,
+		},
+		"data": dmm.Data,
+	})
+	if secret {
+		manifest.SetKind("Secret")
+	}
+	return manifest, nil
 }
 
-func (r *GenericResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *DataMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	if r.secret {
+		resp.TypeName = req.ProviderTypeName + "_secret"
+	} else {
+		resp.TypeName = req.ProviderTypeName + "_config_map"
+	}
+}
+
+func (r *DataMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Example resource",
-
 		Attributes: map[string]schema.Attribute{
-			"manifest": schema.StringAttribute{
-				MarkdownDescription: "Manifest to apply",
+			"immutable": schema.BoolAttribute{
+				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
 			"retry": kresource.RetryModelSchema(),
 		},
+		Blocks: map[string]schema.Block{
+			"metadata": LongMetadataSchemaBlock(),
+		},
+	}
+	if r.secret {
+		resp.Schema.MarkdownDescription = "Kubernetes Secret"
+		resp.Schema.Attributes["data"] = schema.MapAttribute{
+			MarkdownDescription: "Data to store in the secret",
+			ElementType:         types.StringType,
+			Optional:            false,
+		}
+		resp.Schema.Attributes["type"] = schema.StringAttribute{
+			MarkdownDescription: "Type of the secret",
+			Optional:            true,
+		}
+	} else {
+		resp.Schema.MarkdownDescription = "Kubernetes ConfigMap"
+		resp.Schema.Attributes["data"] = schema.MapAttribute{
+			MarkdownDescription: "Data to store in the configmap",
+			ElementType:         types.StringType,
+			Optional:            false,
+		}
 	}
 }
 
-func (r *GenericResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *DataMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -72,7 +123,7 @@ func (r *GenericResource) Configure(ctx context.Context, req resource.ConfigureR
 	}
 }
 
-func (r *GenericResource) newCrudHelper(retryModel *kresource.RetryModel) (*kresource.CrudHelper, error) {
+func (r *DataMap) newCrudHelper(retryModel *kresource.RetryModel) (*kresource.CrudHelper, error) {
 	helper := &kresource.CrudHelper{
 		Shared: &r.provider.Shared,
 	}
@@ -90,8 +141,8 @@ func (r *GenericResource) newCrudHelper(retryModel *kresource.RetryModel) (*kres
 	return helper, nil
 }
 
-func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan GenericResourceModel
+func (r *DataMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan DataMapModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -105,8 +156,7 @@ func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	manifestStr := plan.Manifest.ValueString()
-	helper.Plan, err = kresource.ParseSingleYamlManifest(manifestStr)
+	helper.Plan, err = plan.Manifest(r.secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Parsing manifest", err.Error())
 		return
@@ -122,8 +172,8 @@ func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state GenericResourceModel
+func (r *DataMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state DataMapModel
 
 	// Read Terraform prior state data into the model
 	diags := req.State.Get(ctx, &state)
@@ -133,19 +183,11 @@ func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	manifestStr := state.Manifest.ValueString()
-
-	stateResources, err := kresource.ParseYamlManifestList(manifestStr)
+	stateResource, err := state.Manifest(r.secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read resource tfstate", err.Error())
 		return
 	}
-	if len(stateResources) != 1 {
-		resp.Diagnostics.AddError("Expected one resource in state", fmt.Sprintf("Found %d", len(stateResources)))
-		return
-	}
-	stateResource := stateResources[0]
-
 	key := kresource.GetKey(stateResource)
 	actualUnstructured, err := r.provider.Shared.Get(ctx, key)
 
@@ -166,19 +208,18 @@ func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, re
 			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
 			return
 		} else {
-			s, err := kresource.FormatYaml(actualUnstructured)
+			_, err := kresource.FormatYaml(actualUnstructured)
 			if err != nil {
 				resp.Diagnostics.AddError("Failed to format actual", err.Error())
 				return
 			}
-			state.Manifest = types.StringValue(s)
 		}
 	}
 }
 
-func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan GenericResourceModel
-	var state GenericResourceModel
+func (r *DataMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan DataMapModel
+	var state DataMapModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -193,12 +234,12 @@ func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	helper.State, err = kresource.ParseSingleYamlManifest(state.Manifest.ValueString())
+	helper.State, err = state.Manifest(r.secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse resource tfstate", err.Error())
 		return
 	}
-	helper.Plan, err = kresource.ParseSingleYamlManifest(plan.Manifest.ValueString())
+	helper.Plan, err = plan.Manifest(r.secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse resource plan", err.Error())
 		return
@@ -214,8 +255,8 @@ func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *GenericResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state GenericResourceModel
+func (r *DataMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state DataMapModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -229,8 +270,7 @@ func (r *GenericResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	manifestStr := state.Manifest.ValueString()
-	helper.State, err = kresource.ParseSingleYamlManifest(manifestStr)
+	helper.State, err = state.Manifest(r.secret)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse reource", err.Error())
 		return
@@ -244,6 +284,6 @@ func (r *GenericResource) Delete(ctx context.Context, req resource.DeleteRequest
 	req.State.RemoveResource(ctx)
 }
 
-func (r *GenericResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *DataMap) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.AddError("Import not supported", "This resource does not support import")
 }

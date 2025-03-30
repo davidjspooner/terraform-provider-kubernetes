@@ -113,9 +113,12 @@ func (p *KubernetesProvider) Configure(ctx context.Context, req provider.Configu
 
 func (p *KubernetesProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewManifestResource,
-		NewReadyResource,
+		NewGenericResource,
+		NewResourceGet,
 		NewClusterConfig,
+		//NewConfigMap,
+		//NewSecret,
+		//NewNamespace,
 	}
 }
 

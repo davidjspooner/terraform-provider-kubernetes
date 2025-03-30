@@ -196,19 +196,19 @@ func (shared *Shared) SetNamespace(namespace string) {
 	shared.namespace = namespace
 }
 
-func (shared *Shared) Get(ctx context.Context, key *Key) (*unstructured.Unstructured, error) {
+func (shared *Shared) Get(ctx context.Context, key *Key) (unstructured.Unstructured, error) {
 	// fetch Object and update the model
 
 	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, key.MetaData.Namespace)
 
 	if err != nil {
-		return nil, err
+		return unstructured.Unstructured{}, err
 	}
-	unstructured, err := ri.Get(ctx, key.MetaData.Name, metav1.GetOptions{})
+	u, err := ri.Get(ctx, key.MetaData.Name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return unstructured.Unstructured{}, err
 	}
-	return unstructured, nil
+	return *u, nil
 }
 
 func (shared *Shared) Apply(ctx context.Context, key *Key, u unstructured.Unstructured) error {

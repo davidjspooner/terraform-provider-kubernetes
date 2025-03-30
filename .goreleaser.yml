@@ -68,4 +68,6 @@ uploads:
     mode: archive
     checksum: true
     signature: true
-
+publishers:
+  - name: tfprovider publisher
+    cmd: publish.sh

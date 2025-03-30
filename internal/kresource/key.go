@@ -5,8 +5,10 @@ import (
 )
 
 type MetaData struct {
-	Name      string `yaml:"name"`
-	Namespace string `yaml:"namespace,omitempty"`
+	Name        string            `yaml:"name"`
+	Namespace   string            `yaml:"namespace,omitempty"`
+	Labels      map[string]string `yaml:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty"`
 }
 
 type Key struct {
