@@ -9,6 +9,7 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -60,7 +61,7 @@ func (r *Namespace) Schema(ctx context.Context, req resource.SchemaRequest, resp
 			"retry": job.RetryModelSchema(),
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": LongMetadataSchemaBlock(),
+			"metadata": pmodel.LongMetadataSchemaBlock(),
 		},
 	}
 }

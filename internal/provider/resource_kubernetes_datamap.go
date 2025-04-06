@@ -9,6 +9,7 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -39,25 +40,31 @@ type DataMapModel struct {
 	MetaData  kresource.MetaData `tfsdk:"metadata"`
 	Type      types.String       `tfsdk:"type"`
 	Immutable types.Bool         `tfsdk:"immutable"`
+	File      *pmodel.Files      `tfsdk:"filedata"`
 	Data      types.Map          `tfsdk:"data"`
+	B64Data   types.Map          `tfsdk:"b64data"`
 	Retry     *job.RetryModel    `tfsdk:"retry"`
 }
 
 func (dmm *DataMapModel) Manifest(secret bool) (unstructured.Unstructured, error) {
+
+	data := make(map[string]string)
+
 	var manifest unstructured.Unstructured
 	manifest.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "v1",
-		"kind":       "ConfigMap",
 		"metadata": map[string]interface{}{
 			"name":        dmm.MetaData.Name,
 			"namespace":   dmm.MetaData.Namespace,
 			"labels":      dmm.MetaData.Labels,
 			"annotations": dmm.MetaData.Annotations,
 		},
-		"data": dmm.Data,
+		"data": data,
 	})
 	if secret {
 		manifest.SetKind("Secret")
+	} else {
+		manifest.SetKind("ConfigMap")
 	}
 	return manifest, nil
 }
@@ -80,11 +87,13 @@ func (r *DataMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 			"retry": job.RetryModelSchema(),
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": LongMetadataSchemaBlock(),
+			"metadata": pmodel.LongMetadataSchemaBlock(),
 		},
 	}
 	if r.secret {
 		resp.Schema.MarkdownDescription = "Kubernetes Secret"
+		resp.Schema.Attributes["file"] = pmodel.FileListSchema(false)
+
 		resp.Schema.Attributes["data"] = schema.MapAttribute{
 			MarkdownDescription: "Data to store in the secret",
 			ElementType:         types.StringType,
@@ -96,6 +105,7 @@ func (r *DataMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 		}
 	} else {
 		resp.Schema.MarkdownDescription = "Kubernetes ConfigMap"
+		resp.Schema.Attributes["file"] = pmodel.FileListSchema(false)
 		resp.Schema.Attributes["data"] = schema.MapAttribute{
 			MarkdownDescription: "Data to store in the configmap",
 			ElementType:         types.StringType,

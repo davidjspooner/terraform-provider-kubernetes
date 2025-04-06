@@ -1,4 +1,4 @@
-package provider
+package pmodel
 
 import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
@@ -6,7 +6,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-type ShortMetadataModel struct {
+type ShortMetadata struct {
 	Namespace types.String `tfsdk:"namespace"`
 	Name      types.String `tfsdk:"name"`
 }
@@ -27,7 +27,7 @@ func ShortMetadataSchemaBlock() schema.SingleNestedBlock {
 	return s
 }
 
-type LongMetadataModel struct {
+type LongMetadata struct {
 	Namespace   basetypes.StringValue `tfsdk:"namespace"`
 	Name        types.String          `tfsdk:"name"`
 	Labels      types.Map             `tfsdk:"labels"`

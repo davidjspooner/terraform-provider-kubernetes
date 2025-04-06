@@ -12,6 +12,7 @@ import (
 	"os"
 	"text/template"
 
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -35,9 +36,8 @@ type FileManifests struct {
 
 // FileManifestsModel describes the resource data model.
 type FileManifestsModel struct {
-	Filenames types.List `tfsdk:"filenames"`
-	Values    types.Map  `tfsdk:"values"`
-	Documents types.Set  `tfsdk:"documents"`
+	File      pmodel.Files `tfsdk:"file"`
+	Documents types.Set    `tfsdk:"documents"`
 }
 
 func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -47,18 +47,10 @@ func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataReq
 func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Read a list of yaml and return all the inner documents",
+		MarkdownDescription: "Read yaml from a list of files and return all the inner documents",
 
 		Attributes: map[string]schema.Attribute{
-			"filenames": schema.ListAttribute{
-				MarkdownDescription: "Filenames to read",
-				ElementType:         types.StringType,
-				Required:            true,
-			},
-			"values": schema.MapAttribute{
-				MarkdownDescription: "If defined, treat files as goloang templates and render them with these values",
-				ElementType:         types.StringType,
-			},
+			"file": pmodel.FileListSchema(true),
 			"documents": schema.SetAttribute{
 				MarkdownDescription: "Set of documents",
 				ElementType:         types.StringType,
@@ -111,7 +103,7 @@ func (r *FileManifests) readDocumentsFromReader(_ context.Context, reader io.Rea
 
 func (r *FileManifests) readDocumentsFromFile(ctx context.Context, filename string, config *FileManifestsModel) ([]string, error) {
 	// Read the file
-	values := config.Values.Elements()
+	values := config.File.Values.Elements()
 	if len(values) == 0 {
 		f, err := os.Open(filename)
 		if err != nil {
@@ -141,7 +133,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
-	filenames := config.Filenames.Elements()
+	filenames := config.File.Paths.Elements()
 	allDocuments := make([]attr.Value, 0, len(filenames))
 
 	for n := range filenames {
