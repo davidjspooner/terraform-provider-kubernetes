@@ -2,6 +2,7 @@ package pmodel
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -23,21 +24,21 @@ type Files struct {
 }
 
 func FileListSchema(required bool) schema.Attribute {
-	result := schema.ListNestedAttribute{
-		NestedObject: schema.NestedAttributeObject{
-			Attributes: map[string]schema.Attribute{
-				"paths": schema.ListAttribute{
-					MarkdownDescription: "List of paths to files",
-					Required:            true,
-				},
-				"values": schema.MapAttribute{
-					MarkdownDescription: "Map of values to be used in the file. Requires template_type to be set",
-					Optional:            true,
-				},
-				"template_type": schema.StringAttribute{
-					MarkdownDescription: "Type of template to be used (text or html)",
-					Optional:            true,
-				},
+	result := schema.SingleNestedAttribute{
+		Attributes: map[string]schema.Attribute{
+			"paths": schema.ListAttribute{
+				MarkdownDescription: "List of paths to files",
+				ElementType:         types.StringType,
+				Required:            true,
+			},
+			"values": schema.MapAttribute{
+				MarkdownDescription: "Map of values to be used in the file. Requires template_type to be set",
+				ElementType:         types.StringType,
+				Optional:            true,
+			},
+			"template_type": schema.StringAttribute{
+				MarkdownDescription: "Type of template to be used (text or html)",
+				Optional:            true,
 			},
 		},
 	}
@@ -52,6 +53,26 @@ func FileListSchema(required bool) schema.Attribute {
 type StringMap struct {
 	base64Encoded bool
 	data          map[string]string
+}
+
+func (sm *StringMap) SetBase64Encoded(b64 bool) {
+	if sm.base64Encoded != b64 {
+		if b64 {
+			for k, v := range sm.data {
+				b := []byte(v)
+				sm.data[k] = base64.StdEncoding.EncodeToString(b)
+			}
+		} else {
+			for k, v := range sm.data {
+				b, err := base64.StdEncoding.DecodeString(v)
+				if err != nil {
+					continue // Ignore errors for now
+				}
+				sm.data[k] = string(b)
+			}
+		}
+	}
+	sm.base64Encoded = b64
 }
 
 func (sm *StringMap) Add(key, value string) error {
@@ -128,13 +149,30 @@ func (sm *StringMap) GetBase64(key string) (string, error) {
 	return value, nil
 }
 
-func (sm *StringMap) AddMaps(data, b64data map[string]string) error {
-	for k, v := range data {
+func (sm *StringMap) AddMaps(data, b64data types.Map) error {
+	var elements map[string]string
+
+	diags := data.ElementsAs(context.Background(), &elements, false)
+	if diags.HasError() {
+		return fmt.Errorf("error getting data map")
+	}
+
+	for k, v := range elements {
+		if k == "" {
+			return errors.New("key is empty string")
+		}
 		if err := sm.Add(k, v); err != nil {
 			return err
 		}
 	}
-	for k, v := range b64data {
+	diags = b64data.ElementsAs(context.Background(), &elements, false)
+	if diags.HasError() {
+		return fmt.Errorf("error getting data map")
+	}
+	for k, v := range elements {
+		if k == "" {
+			return errors.New("key is empty string")
+		}
 		if err := sm.AddBase64(k, v); err != nil {
 			return err
 		}
@@ -199,36 +237,35 @@ func (sm *StringMap) AddFileModel(fm *Files) error {
 	}
 	templateType := fm.TemplateType.ValueString()
 	values := make(map[string]string)
-	if !fm.Values.IsNull() {
-		for key, value := range fm.Values.Elements() {
-			if value.IsNull() {
-				return fmt.Errorf("value for key %q is null", key)
-			}
-			if value.IsUnknown() {
-				return fmt.Errorf("value for key %q is unknown", key)
-			}
-			values[key] = value.String()
-		}
+
+	diags := fm.Values.ElementsAs(context.Background(), &values, false)
+	if diags.HasError() {
+		return fmt.Errorf("error getting values map")
 	}
 
+	var paths []string
+	ctx := context.Background()
+	diags = fm.Paths.ElementsAs(ctx, &paths, false)
+	if diags.HasError() {
+		return fmt.Errorf("error getting paths")
+	}
 	var err error
-	for _, path := range fm.Paths.Elements() {
-		pathValue := path.String()
-		if pathValue == "" {
+	for _, path := range paths {
+		if path == "" {
 			return errors.New("path is empty")
 		}
 		// Treat the path value as a glob if it contains a wildcard
 		var matches []string
-		if strings.ContainsAny(pathValue, "*?[]") {
-			matches, err = filepath.Glob(pathValue)
+		if strings.ContainsAny(path, "*?[]") {
+			matches, err = filepath.Glob(path)
 			if err != nil {
-				return fmt.Errorf("error processing glob pattern %q: %w", pathValue, err)
+				return fmt.Errorf("error processing glob pattern %q: %w", path, err)
 			}
 			if matches == nil {
-				return fmt.Errorf("no files match the glob pattern %q", pathValue)
+				return fmt.Errorf("no files match the glob pattern %q", path)
 			}
 		} else {
-			matches = []string{pathValue}
+			matches = []string{path}
 		}
 		for _, match := range matches {
 			if err := sm.addFileContents(match, templateType, values); err != nil {
@@ -237,4 +274,15 @@ func (sm *StringMap) AddFileModel(fm *Files) error {
 		}
 	}
 	return nil
+}
+
+func (sm *StringMap) GetUnstructured() map[string]string {
+	if sm == nil || len(sm.data) == 0 {
+		return nil
+	}
+	copy := make(map[string]string, len(sm.data))
+	for k, v := range sm.data {
+		copy[k] = v
+	}
+	return copy
 }

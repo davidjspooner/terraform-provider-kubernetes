@@ -116,15 +116,15 @@ func (p *KubernetesProvider) Resources(ctx context.Context) []func() resource.Re
 		NewGenericResource,
 		NewResourceGet,
 		NewClusterConfig,
-		//NewConfigMap,
-		//NewSecret,
+		NewConfigMap,
+		NewSecret,
 		NewNamespace,
 	}
 }
 
 func (p *KubernetesProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
-		//NewExampleDataSource,
+		NewFileManifests,
 	}
 }
 

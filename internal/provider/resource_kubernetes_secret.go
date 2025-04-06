@@ -18,103 +18,105 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &DataMap{}
-var _ resource.ResourceWithImportState = &DataMap{}
-
-func NewConfigMap() resource.Resource {
-	return &DataMap{secret: false}
-}
+var _ resource.Resource = &Secret{}
+var _ resource.ResourceWithImportState = &Secret{}
 
 func NewSecret() resource.Resource {
-	return &DataMap{secret: true}
+	return &Secret{}
 }
 
-// DataMap defines the resource implementation.
-type DataMap struct {
+// Secret defines the resource implementation.
+type Secret struct {
 	provider *KubernetesProvider
-	secret   bool
 }
 
-// DataMapModel describes the resource data model.
-type DataMapModel struct {
+// SecretModel describes the resource data model.
+type SecretModel struct {
 	MetaData  kresource.MetaData `tfsdk:"metadata"`
-	Type      types.String       `tfsdk:"type"`
 	Immutable types.Bool         `tfsdk:"immutable"`
-	File      *pmodel.Files      `tfsdk:"filedata"`
+	Type      types.String       `tfsdk:"type"`
+	File      *pmodel.Files      `tfsdk:"file"`
 	Data      types.Map          `tfsdk:"data"`
 	B64Data   types.Map          `tfsdk:"b64data"`
 	Retry     *job.RetryModel    `tfsdk:"retry"`
 }
 
-func (dmm *DataMapModel) Manifest(secret bool) (unstructured.Unstructured, error) {
+func (dmm *SecretModel) Manifest() (unstructured.Unstructured, error) {
 
-	data := make(map[string]string)
+	sm := &pmodel.StringMap{}
+	sm.SetBase64Encoded(true)
+
+	err := sm.AddFileModel(dmm.File)
+	if err != nil {
+		return unstructured.Unstructured{}, err
+	}
+	err = sm.AddMaps(dmm.Data, dmm.B64Data)
+	if err != nil {
+		return unstructured.Unstructured{}, err
+	}
 
 	var manifest unstructured.Unstructured
 	manifest.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "v1",
+		"kind":       "Secret",
 		"metadata": map[string]interface{}{
 			"name":        dmm.MetaData.Name,
-			"namespace":   dmm.MetaData.Namespace,
 			"labels":      dmm.MetaData.Labels,
 			"annotations": dmm.MetaData.Annotations,
 		},
-		"data": data,
+		"data": sm.GetUnstructured(),
 	})
-	if secret {
-		manifest.SetKind("Secret")
-	} else {
-		manifest.SetKind("ConfigMap")
+	if dmm.MetaData.Namespace != nil {
+		manifest.SetNamespace(*dmm.MetaData.Namespace)
 	}
+	immutable := dmm.Immutable.ValueBool()
+	if immutable {
+		manifest.Object["immutable"] = immutable
+	}
+	sType := dmm.Type.ValueString()
+	if sType == "" {
+		sType = "Opaque"
+	}
+	manifest.Object["type"] = sType
 	return manifest, nil
 }
 
-func (r *DataMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	if r.secret {
-		resp.TypeName = req.ProviderTypeName + "_secret"
-	} else {
-		resp.TypeName = req.ProviderTypeName + "_config_map"
-	}
+func (r *Secret) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_secret"
 }
 
-func (r *DataMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *Secret) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		Description: "A Kubernetes Secret resource. This resource manages the lifecycle of a Kubernetes Secret.",
 		Attributes: map[string]schema.Attribute{
 			"immutable": schema.BoolAttribute{
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
 			"retry": job.RetryModelSchema(),
+			"file":  pmodel.FileListSchema(false),
+			"data": schema.MapAttribute{
+				MarkdownDescription: "Data to store in the secret",
+				ElementType:         types.StringType,
+				Optional:            true,
+			},
+			"b64data": schema.MapAttribute{
+				MarkdownDescription: "Base64 encoded data to store in the secret ( will be base64 decoded )",
+				ElementType:         types.StringType,
+				Optional:            true,
+			},
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Type of the secret",
+				Optional:            true,
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"metadata": pmodel.LongMetadataSchemaBlock(),
 		},
 	}
-	if r.secret {
-		resp.Schema.MarkdownDescription = "Kubernetes Secret"
-		resp.Schema.Attributes["file"] = pmodel.FileListSchema(false)
-
-		resp.Schema.Attributes["data"] = schema.MapAttribute{
-			MarkdownDescription: "Data to store in the secret",
-			ElementType:         types.StringType,
-			Optional:            false,
-		}
-		resp.Schema.Attributes["type"] = schema.StringAttribute{
-			MarkdownDescription: "Type of the secret",
-			Optional:            true,
-		}
-	} else {
-		resp.Schema.MarkdownDescription = "Kubernetes ConfigMap"
-		resp.Schema.Attributes["file"] = pmodel.FileListSchema(false)
-		resp.Schema.Attributes["data"] = schema.MapAttribute{
-			MarkdownDescription: "Data to store in the configmap",
-			ElementType:         types.StringType,
-			Optional:            false,
-		}
-	}
 }
 
-func (r *DataMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *Secret) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -133,7 +135,7 @@ func (r *DataMap) Configure(ctx context.Context, req resource.ConfigureRequest, 
 	}
 }
 
-func (r *DataMap) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
+func (r *Secret) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
 	helper := &kresource.CrudHelper{
 		Shared: &r.provider.Shared,
 	}
@@ -151,8 +153,8 @@ func (r *DataMap) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelp
 	return helper, nil
 }
 
-func (r *DataMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan DataMapModel
+func (r *Secret) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan SecretModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -166,7 +168,7 @@ func (r *DataMap) Create(ctx context.Context, req resource.CreateRequest, resp *
 		return
 	}
 
-	helper.Plan, err = plan.Manifest(r.secret)
+	helper.Plan, err = plan.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Parsing manifest", err.Error())
 		return
@@ -182,8 +184,8 @@ func (r *DataMap) Create(ctx context.Context, req resource.CreateRequest, resp *
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *DataMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state DataMapModel
+func (r *Secret) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state SecretModel
 
 	// Read Terraform prior state data into the model
 	diags := req.State.Get(ctx, &state)
@@ -193,7 +195,7 @@ func (r *DataMap) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 		return
 	}
 
-	stateResource, err := state.Manifest(r.secret)
+	stateResource, err := state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read resource tfstate", err.Error())
 		return
@@ -227,9 +229,9 @@ func (r *DataMap) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 	}
 }
 
-func (r *DataMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan DataMapModel
-	var state DataMapModel
+func (r *Secret) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan SecretModel
+	var state SecretModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -244,12 +246,12 @@ func (r *DataMap) Update(ctx context.Context, req resource.UpdateRequest, resp *
 		return
 	}
 
-	helper.State, err = state.Manifest(r.secret)
+	helper.State, err = state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse resource tfstate", err.Error())
 		return
 	}
-	helper.Plan, err = plan.Manifest(r.secret)
+	helper.Plan, err = plan.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse resource plan", err.Error())
 		return
@@ -265,8 +267,8 @@ func (r *DataMap) Update(ctx context.Context, req resource.UpdateRequest, resp *
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *DataMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state DataMapModel
+func (r *Secret) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state SecretModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -280,7 +282,7 @@ func (r *DataMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 		return
 	}
 
-	helper.State, err = state.Manifest(r.secret)
+	helper.State, err = state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse reource", err.Error())
 		return
@@ -294,6 +296,6 @@ func (r *DataMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *
 	req.State.RemoveResource(ctx)
 }
 
-func (r *DataMap) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *Secret) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.AddError("Import not supported", "This resource does not support import")
 }
