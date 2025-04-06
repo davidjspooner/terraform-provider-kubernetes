@@ -7,53 +7,65 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/davidjspooner/dsflow/pkg/job"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &GenericResource{}
-var _ resource.ResourceWithImportState = &GenericResource{}
+var _ resource.Resource = &Namespace{}
+var _ resource.ResourceWithImportState = &Namespace{}
 
-func NewGenericResource() resource.Resource {
-	return &GenericResource{}
+func NewNamespace() resource.Resource {
+	return &Namespace{}
 }
 
-// GenericResource defines the resource implementation.
-type GenericResource struct {
+// Namespace defines the resource implementation.
+type Namespace struct {
 	provider *KubernetesProvider
 }
 
-// GenericResourceModel describes the resource data model.
-type GenericResourceModel struct {
-	Manifest types.String          `tfsdk:"manifest"`
-	Retry    *kresource.RetryModel `tfsdk:"retry"`
+// NamespaceModel describes the resource data model.
+type NamespaceModel struct {
+	MetaData kresource.MetaData `tfsdk:"metadata"`
+	Retry    *job.RetryModel    `tfsdk:"retry"`
 }
 
-func (r *GenericResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_resource"
+func (nsm *NamespaceModel) Manifest() (unstructured.Unstructured, error) {
+	var manifest unstructured.Unstructured
+	manifest.SetUnstructuredContent(map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "Namespace",
+		"metadata": map[string]interface{}{
+			"name":        nsm.MetaData.Name,
+			"namespace":   nsm.MetaData.Namespace,
+			"labels":      nsm.MetaData.Labels,
+			"annotations": nsm.MetaData.Annotations,
+		},
+	})
+	return manifest, nil
 }
 
-func (r *GenericResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *Namespace) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_namespace"
+}
+
+func (r *Namespace) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Example resource",
-
+		MarkdownDescription: "A Kubernetes Namespace resource. This resource manages the lifecycle of a Kubernetes namespace.",
 		Attributes: map[string]schema.Attribute{
-			"manifest": schema.StringAttribute{
-				MarkdownDescription: "Manifest to apply",
-				Optional:            true,
-			},
-			"retry": kresource.RetryModelSchema(),
+			"retry": job.RetryModelSchema(),
+		},
+		Blocks: map[string]schema.Block{
+			"metadata": LongMetadataSchemaBlock(),
 		},
 	}
 }
 
-func (r *GenericResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *Namespace) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -72,7 +84,7 @@ func (r *GenericResource) Configure(ctx context.Context, req resource.ConfigureR
 	}
 }
 
-func (r *GenericResource) newCrudHelper(retryModel *kresource.RetryModel) (*kresource.CrudHelper, error) {
+func (r *Namespace) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
 	helper := &kresource.CrudHelper{
 		Shared: &r.provider.Shared,
 	}
@@ -90,8 +102,8 @@ func (r *GenericResource) newCrudHelper(retryModel *kresource.RetryModel) (*kres
 	return helper, nil
 }
 
-func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan GenericResourceModel
+func (r *Namespace) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan NamespaceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -105,8 +117,7 @@ func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	manifestStr := plan.Manifest.ValueString()
-	helper.Plan, err = kresource.ParseSingleYamlManifest(manifestStr)
+	helper.Plan, err = plan.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Parsing manifest", err.Error())
 		return
@@ -122,8 +133,8 @@ func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state GenericResourceModel
+func (r *Namespace) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state NamespaceModel
 
 	// Read Terraform prior state data into the model
 	diags := req.State.Get(ctx, &state)
@@ -133,19 +144,11 @@ func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	manifestStr := state.Manifest.ValueString()
-
-	stateResources, err := kresource.ParseYamlManifestList(manifestStr)
+	stateResource, err := state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read resource tfstate", err.Error())
 		return
 	}
-	if len(stateResources) != 1 {
-		resp.Diagnostics.AddError("Expected one resource in state", fmt.Sprintf("Found %d", len(stateResources)))
-		return
-	}
-	stateResource := stateResources[0]
-
 	key := kresource.GetKey(stateResource)
 	actualUnstructured, err := r.provider.Shared.Get(ctx, key)
 
@@ -158,7 +161,7 @@ func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, re
 		}
 	} else {
 		//compare state with current
-		diffs, err := diffResources(stateResource.Object, actualUnstructured.Object)
+		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
 		for _, diff := range diffs {
 			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
 		}
@@ -171,14 +174,14 @@ func (r *GenericResource) Read(ctx context.Context, req resource.ReadRequest, re
 				resp.Diagnostics.AddError("Failed to format actual", err.Error())
 				return
 			}
-			state.Manifest = types.StringValue(s)
+			_ = s
 		}
 	}
 }
 
-func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan GenericResourceModel
-	var state GenericResourceModel
+func (r *Namespace) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan NamespaceModel
+	var state NamespaceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -193,12 +196,12 @@ func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	helper.State, err = kresource.ParseSingleYamlManifest(state.Manifest.ValueString())
+	helper.State, err = state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse resource tfstate", err.Error())
 		return
 	}
-	helper.Plan, err = kresource.ParseSingleYamlManifest(plan.Manifest.ValueString())
+	helper.Plan, err = plan.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse resource plan", err.Error())
 		return
@@ -214,8 +217,8 @@ func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *GenericResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state GenericResourceModel
+func (r *Namespace) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state NamespaceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -229,8 +232,7 @@ func (r *GenericResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	manifestStr := state.Manifest.ValueString()
-	helper.State, err = kresource.ParseSingleYamlManifest(manifestStr)
+	helper.State, err = state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to parse reource", err.Error())
 		return
@@ -244,6 +246,6 @@ func (r *GenericResource) Delete(ctx context.Context, req resource.DeleteRequest
 	req.State.RemoveResource(ctx)
 }
 
-func (r *GenericResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *Namespace) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.AddError("Import not supported", "This resource does not support import")
 }

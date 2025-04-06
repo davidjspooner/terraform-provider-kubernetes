@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"golang.org/x/exp/constraints"
 )
 
 func FirstNonNullString(args ...string) string {
@@ -54,4 +56,15 @@ func ErrorIsNotFound(err error) bool {
 		}
 	}
 	return false
+}
+
+func FirstNonEmpty[E constraints.Ordered](values ...E) E {
+	var null E
+	for _, v := range values {
+		if v != null {
+			return v
+		}
+
+	}
+	return values[len(values)-1]
 }

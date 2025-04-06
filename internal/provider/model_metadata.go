@@ -3,6 +3,7 @@ package provider
 import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 type ShortMetadataModel struct {
@@ -27,10 +28,10 @@ func ShortMetadataSchemaBlock() schema.SingleNestedBlock {
 }
 
 type LongMetadataModel struct {
-	Namespace   types.String `tfsdk:"namespace"`
-	Name        types.String `tfsdk:"name"`
-	Labels      types.Map    `tfsdk:"labels"`
-	Annotations types.Map    `tfsdk:"annotations"`
+	Namespace   basetypes.StringValue `tfsdk:"namespace"`
+	Name        types.String          `tfsdk:"name"`
+	Labels      types.Map             `tfsdk:"labels"`
+	Annotations types.Map             `tfsdk:"annotations"`
 }
 
 func LongMetadataSchemaBlock() schema.SingleNestedBlock {

@@ -1,4 +1,4 @@
-package kresource
+package job
 
 import (
 	"context"

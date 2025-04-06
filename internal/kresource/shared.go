@@ -196,10 +196,17 @@ func (shared *Shared) SetNamespace(namespace string) {
 	shared.namespace = namespace
 }
 
+func (shared *Shared) GetNamespace(namespace *string) string {
+	if namespace == nil || *namespace == "" {
+		return shared.namespace
+	}
+	return *namespace
+}
+
 func (shared *Shared) Get(ctx context.Context, key *Key) (unstructured.Unstructured, error) {
 	// fetch Object and update the model
 
-	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, key.MetaData.Namespace)
+	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.GetNamespace(key.MetaData.Namespace))
 
 	if err != nil {
 		return unstructured.Unstructured{}, err
@@ -212,7 +219,7 @@ func (shared *Shared) Get(ctx context.Context, key *Key) (unstructured.Unstructu
 }
 
 func (shared *Shared) Apply(ctx context.Context, key *Key, u unstructured.Unstructured) error {
-	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, key.MetaData.Namespace)
+	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.GetNamespace(key.MetaData.Namespace))
 	if err != nil {
 		return err
 	}
@@ -231,7 +238,7 @@ func (shared *Shared) Apply(ctx context.Context, key *Key, u unstructured.Unstru
 }
 
 func (shared *Shared) Delete(ctx context.Context, key *Key) error {
-	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, key.MetaData.Namespace)
+	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.GetNamespace(key.MetaData.Namespace))
 	if err != nil {
 		return err
 	}

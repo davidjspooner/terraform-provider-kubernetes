@@ -1,4 +1,4 @@
-package provider
+package kresource
 
 import (
 	"reflect"
@@ -8,7 +8,7 @@ import (
 	"github.com/davidjspooner/dsvalue/pkg/value"
 )
 
-func diffResources(left, right interface{}) ([]string, error) {
+func DiffResources(left, right interface{}) ([]string, error) {
 	var diffs []string
 	leftRoot, err := reflected.NewReflectedObject(reflect.ValueOf(left), nil)
 	if err != nil {

@@ -3,13 +3,9 @@ package kresource
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 
-	"github.com/davidjspooner/dsflow/pkg/job"
-	"github.com/davidjspooner/dsvalue/pkg/path"
-	"github.com/davidjspooner/dsvalue/pkg/reflected"
-	"github.com/davidjspooner/dsvalue/pkg/value"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -27,7 +23,8 @@ func GetKey(r unstructured.Unstructured) *Key {
 	k.ApiVersion = r.GetAPIVersion()
 	k.Kind = r.GetKind()
 	k.MetaData.Name = r.GetName()
-	k.MetaData.Namespace = r.GetNamespace()
+	namespace := r.GetNamespace()
+	k.MetaData.Namespace = &namespace
 	return &k
 }
 
@@ -59,23 +56,6 @@ func (helper *CrudHelper) ApplyPlan(ctx context.Context) error {
 func (helper *CrudHelper) CreateFromPlan(ctx context.Context) error {
 	return helper.ApplyPlan(ctx)
 }
-func (helper *CrudHelper) Diff(ctx context.Context, a, b unstructured.Unstructured) ([]string, error) {
-	var diffs []string
-	leftRoot, err := reflected.NewReflectedObject(reflect.ValueOf(a), nil)
-	if err != nil {
-		return nil, err
-	}
-	rightRoot, err := reflected.NewReflectedObject(reflect.ValueOf(b), nil)
-	if err != nil {
-		return nil, err
-	}
-	err = path.Diff(leftRoot, rightRoot, func(p path.Path, left, right value.Value) error {
-		pathString := p.String()
-		diffs = append(diffs, pathString)
-		return nil
-	})
-	return diffs, err
-}
 
 var invariants = []string{".metadata.name", ".metadata.namespace", ".kind", ".apiVersion"}
 
@@ -96,7 +76,7 @@ func (helper *CrudHelper) Update(ctx context.Context) error {
 	key := GetKey(helper.State)
 	actual, err := helper.Shared.Get(ctx, key)
 	if err == nil {
-		diffs, _ := helper.Diff(ctx, actual, helper.Plan)
+		diffs, _ := DiffResources(actual, helper.Plan)
 		if DiffContainsInvariant(diffs) {
 			needRecreate = true
 		}

@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/davidjspooner/dsflow/pkg/job"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -36,11 +36,11 @@ type DataMap struct {
 
 // DataMapModel describes the resource data model.
 type DataMapModel struct {
-	MetaData  kresource.MetaData    `tfsdk:"metadata"`
-	Type      types.String          `tfsdk:"type"`
-	Immutable types.Bool            `tfsdk:"immutable"`
-	Data      types.Map             `tfsdk:"data"`
-	Retry     *kresource.RetryModel `tfsdk:"retry"`
+	MetaData  kresource.MetaData `tfsdk:"metadata"`
+	Type      types.String       `tfsdk:"type"`
+	Immutable types.Bool         `tfsdk:"immutable"`
+	Data      types.Map          `tfsdk:"data"`
+	Retry     *job.RetryModel    `tfsdk:"retry"`
 }
 
 func (dmm *DataMapModel) Manifest(secret bool) (unstructured.Unstructured, error) {
@@ -77,7 +77,7 @@ func (r *DataMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
-			"retry": kresource.RetryModelSchema(),
+			"retry": job.RetryModelSchema(),
 		},
 		Blocks: map[string]schema.Block{
 			"metadata": LongMetadataSchemaBlock(),
@@ -123,7 +123,7 @@ func (r *DataMap) Configure(ctx context.Context, req resource.ConfigureRequest, 
 	}
 }
 
-func (r *DataMap) newCrudHelper(retryModel *kresource.RetryModel) (*kresource.CrudHelper, error) {
+func (r *DataMap) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
 	helper := &kresource.CrudHelper{
 		Shared: &r.provider.Shared,
 	}
@@ -200,7 +200,7 @@ func (r *DataMap) Read(ctx context.Context, req resource.ReadRequest, resp *reso
 		}
 	} else {
 		//compare state with current
-		diffs, err := diffResources(stateResource.Object, actualUnstructured.Object)
+		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
 		for _, diff := range diffs {
 			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
 		}

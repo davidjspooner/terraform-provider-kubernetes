@@ -1,4 +1,4 @@
-package kresource
+package job
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidjspooner/dsflow/pkg/job"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -19,13 +18,13 @@ type RetryModel struct {
 	Timeout     *string   `tfsdk:"timeout"`
 }
 
-func (rs *RetryModel) NewHelper(defaults *job.RetryHelper) (*job.RetryHelper, error) {
+func (rs *RetryModel) NewHelper(defaults *RetryHelper) (*RetryHelper, error) {
 
 	if rs == nil {
 		rs = &RetryModel{}
 	}
 
-	var rh job.RetryHelper
+	var rh RetryHelper
 	if defaults != nil {
 		rh = *defaults
 	}
@@ -60,7 +59,7 @@ func (rs *RetryModel) NewHelper(defaults *job.RetryHelper) (*job.RetryHelper, er
 
 	//parse interval ( default is 10s 20s 30s )
 	if rs.Interval != nil && *rs.Interval != "" {
-		rh.Interval, err = job.ParseDurationList(*rs.Interval)
+		rh.Interval, err = ParseDurationList(*rs.Interval)
 		if err != nil {
 			return nil, err
 		}

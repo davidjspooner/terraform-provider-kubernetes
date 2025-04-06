@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -15,34 +16,34 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &ClusterConfig{}
-var _ resource.ResourceWithImportState = &ClusterConfig{}
+var _ resource.Resource = &Config{}
+var _ resource.ResourceWithImportState = &Config{}
 
 func NewClusterConfig() resource.Resource {
-	return &ClusterConfig{}
+	return &Config{}
 }
 
-// ClusterConfig defines the resource implementation.
-type ClusterConfig struct {
+// Config defines the resource implementation.
+type Config struct {
 	provider *KubernetesProvider
 }
 
-// ClusterConfigModel describes the resource data model.
-type ClusterConfigModel struct {
-	Name             types.String `tfsdk:"name"`
-	Server           types.String `tfsdk:"server"`
-	TemplateFilename types.String `tfsdk:"template_filename"`
-	TargetFilename   types.String `tfsdk:"target_filename"`
+// ConfigModel describes the resource data model.
+type ConfigModel struct {
+	Name           types.String `tfsdk:"name"`
+	Server         types.String `tfsdk:"server"`
+	SourceFilename types.String `tfsdk:"source_filename"`
+	TargetFilename types.String `tfsdk:"target_filename"`
 }
 
-func (r *ClusterConfig) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *Config) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_cluster_config"
 }
 
-func (r *ClusterConfig) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *Config) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Imports/Updates a Kubernetes cluster configuration file into the config used by the provider.",
+		MarkdownDescription: "Merges a Kubernetes cluster configuration file into another configuration file.",
 
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
@@ -53,19 +54,19 @@ func (r *ClusterConfig) Schema(ctx context.Context, req resource.SchemaRequest, 
 				MarkdownDescription: "Server to use in config ( eg https://localhost:16443 )",
 				Optional:            true,
 			},
-			"template_filename": schema.StringAttribute{
-				MarkdownDescription: "File to use as template for config",
+			"source_filename": schema.StringAttribute{
+				MarkdownDescription: "File to use as source of config to merge into target",
 				Required:            true,
 			},
 			"target_filename": schema.StringAttribute{
-				MarkdownDescription: "Where to write config",
+				MarkdownDescription: "File to merge config into",
 				Required:            true,
 			},
 		},
 	}
 }
 
-func (r *ClusterConfig) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -84,11 +85,11 @@ func (r *ClusterConfig) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 }
 
-func (r *ClusterConfig) createOrUpdate(ctx context.Context, data *ClusterConfigModel) error {
-	pair := K8sConfigPair{}
-	template_filename := data.TemplateFilename.ValueString()
+func (r *Config) createOrUpdate(ctx context.Context, data *ConfigModel) error {
+	pair := kresource.K8sConfigPair{}
+	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()
-	pair.LoadConfigs(template_filename, target_filename)
+	pair.LoadConfigs(source_filename, target_filename)
 	name := data.Name.ValueString()
 	server := data.Server.ValueString()
 	err := pair.UpdateTemplate(name, server)
@@ -111,8 +112,8 @@ func (r *ClusterConfig) createOrUpdate(ctx context.Context, data *ClusterConfigM
 	return nil
 }
 
-func (r *ClusterConfig) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data ClusterConfigModel
+func (r *Config) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ConfigModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -132,12 +133,12 @@ func (r *ClusterConfig) Create(ctx context.Context, req resource.CreateRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *ClusterConfig) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *Config) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	resp.State.RemoveResource(ctx) //always recreate just in case
 }
 
-func (r *ClusterConfig) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data ClusterConfigModel
+func (r *Config) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data ConfigModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -161,8 +162,8 @@ func (r *ClusterConfig) Update(ctx context.Context, req resource.UpdateRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *ClusterConfig) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data ClusterConfigModel
+func (r *Config) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ConfigModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -170,11 +171,11 @@ func (r *ClusterConfig) Delete(ctx context.Context, req resource.DeleteRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	pair := K8sConfigPair{}
+	pair := kresource.K8sConfigPair{}
 
-	template_filename := data.TemplateFilename.ValueString()
+	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()
-	pair.LoadConfigs(template_filename, target_filename)
+	pair.LoadConfigs(source_filename, target_filename)
 	name := data.Name.ValueString()
 	pair.RemoveClusterFromTarget(name)
 	pair.Target.WriteToFile(target_filename)
@@ -185,6 +186,6 @@ func (r *ClusterConfig) Delete(ctx context.Context, req resource.DeleteRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *ClusterConfig) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *Config) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

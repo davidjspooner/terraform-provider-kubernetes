@@ -11,6 +11,7 @@ import (
 
 	"github.com/davidjspooner/dsvalue/pkg/reflected"
 	"github.com/davidjspooner/dsvalue/pkg/value"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -39,7 +40,7 @@ type GetResourceModel struct {
 
 	Querry QuerryList `tfsdk:"querry"`
 
-	Retry *kresource.RetryModel `tfsdk:"retry"`
+	Retry *job.RetryModel `tfsdk:"retry"`
 
 	Captured types.Map `tfsdk:"captured"`
 
@@ -76,7 +77,7 @@ func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, 
 				MarkdownDescription: "API version of the object",
 				Required:            true,
 			},
-			"retry":  kresource.RetryModelSchema(),
+			"retry":  job.RetryModelSchema(),
 			"querry": QuerrySchemaList(true),
 			"captured": schema.MapAttribute{
 				MarkdownDescription: "Captured data",
@@ -167,11 +168,18 @@ func (r *KubernetesGet) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
+	var namespace string
+	if data.Metadata.Namespace.IsNull() {
+		namespace = r.provider.Shared.GetNamespace(nil)
+	} else {
+		namespace = data.Metadata.Namespace.ValueString()
+	}
+
 	key := kresource.Key{
 		Kind:       data.Kind.ValueString(),
 		ApiVersion: data.ApiVersion.ValueString(),
 		MetaData: kresource.MetaData{
-			Namespace: data.Metadata.Namespace.ValueString(),
+			Namespace: &namespace,
 			Name:      data.Metadata.Name.ValueString(),
 		},
 	}
@@ -191,11 +199,19 @@ func (r *KubernetesGet) Read(ctx context.Context, req resource.ReadRequest, resp
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	var namespace string
+	if data.Metadata.Namespace.IsNull() {
+		namespace = r.provider.Shared.GetNamespace(nil)
+	} else {
+		namespace = data.Metadata.Namespace.ValueString()
+	}
+
 	key := kresource.Key{
 		Kind:       data.Kind.ValueString(),
 		ApiVersion: data.ApiVersion.ValueString(),
 		MetaData: kresource.MetaData{
-			Namespace: data.Metadata.Namespace.ValueString(),
+			Namespace: &namespace,
 			Name:      data.Metadata.Name.ValueString(),
 		},
 	}
@@ -225,12 +241,18 @@ func (r *KubernetesGet) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 
+	var namespace string
+	if data.Metadata.Namespace.IsNull() {
+		namespace = r.provider.Shared.GetNamespace(nil)
+	} else {
+		namespace = data.Metadata.Namespace.ValueString()
+	}
 	key := kresource.Key{
 		Kind:       data.Kind.ValueString(),
 		ApiVersion: data.ApiVersion.ValueString(),
 		MetaData: kresource.MetaData{
-			Namespace: data.Metadata.Namespace.ValueString(),
 			Name:      data.Metadata.Name.ValueString(),
+			Namespace: &namespace,
 		},
 	}
 

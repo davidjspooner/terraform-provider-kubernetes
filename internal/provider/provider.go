@@ -6,7 +6,7 @@ package provider
 import (
 	"context"
 
-	"github.com/davidjspooner/dsflow/pkg/job"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -35,12 +35,12 @@ type KubernetesProvider struct {
 
 // KubernetesProviderModel describes the provider data model.
 type KubernetesProviderModel struct {
-	ConfigPaths           []types.String        `tfsdk:"config_paths"`
-	ConfigContext         types.String          `tfsdk:"config_context"`
-	ConfigContextAuthInfo types.String          `tfsdk:"config_context_auth_info"`
-	ConfigContextCluster  types.String          `tfsdk:"config_context_cluster"`
-	Namespace             types.String          `tfsdk:"namespace"`
-	Retry                 *kresource.RetryModel `tfsdk:"retry"`
+	ConfigPaths           []types.String  `tfsdk:"config_paths"`
+	ConfigContext         types.String    `tfsdk:"config_context"`
+	ConfigContextAuthInfo types.String    `tfsdk:"config_context_auth_info"`
+	ConfigContextCluster  types.String    `tfsdk:"config_context_cluster"`
+	Namespace             types.String    `tfsdk:"namespace"`
+	Retry                 *job.RetryModel `tfsdk:"retry"`
 }
 
 func (p *KubernetesProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -72,7 +72,7 @@ func (p *KubernetesProvider) Schema(ctx context.Context, req provider.SchemaRequ
 				Description: "Default namespace to use",
 				Optional:    true,
 			},
-			"retry": kresource.RetryModelSchema(),
+			"retry": job.RetryModelSchema(),
 		},
 	}
 }
@@ -118,7 +118,7 @@ func (p *KubernetesProvider) Resources(ctx context.Context) []func() resource.Re
 		NewClusterConfig,
 		//NewConfigMap,
 		//NewSecret,
-		//NewNamespace,
+		NewNamespace,
 	}
 }
 
