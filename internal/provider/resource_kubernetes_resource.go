@@ -9,7 +9,6 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -38,7 +37,7 @@ type GenericResourceModel struct {
 	ManifestString types.String `tfsdk:"manifest"`
 
 	Retry *job.RetryModel `tfsdk:"retry"`
-	pmodel.OutputMetadata
+	OutputMetadata
 }
 
 func (grm *GenericResourceModel) Manifest() (unstructured.Unstructured, error) {
@@ -100,8 +99,8 @@ func (r *GenericResource) Configure(ctx context.Context, req resource.ConfigureR
 	}
 }
 
-func (r *GenericResource) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
-	helper := &kresource.CrudHelper{
+func (r *GenericResource) newCrudHelper(retryModel *job.RetryModel) (*CrudHelper, error) {
+	helper := &CrudHelper{
 		Shared: &r.provider.Shared,
 	}
 	var err error
@@ -139,7 +138,7 @@ func (r *GenericResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	err = helper.CreateFromPlan(ctx)
+	err = helper.CreateFromPlan(ctx, &plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create resource", err.Error())
 		return
@@ -245,7 +244,7 @@ func (r *GenericResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	err = helper.Update(ctx)
+	err = helper.Update(ctx, &plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update resource", err.Error())
 		return

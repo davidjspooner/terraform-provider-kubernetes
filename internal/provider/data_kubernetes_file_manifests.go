@@ -7,18 +7,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"text/template"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -39,8 +40,8 @@ type FileManifests struct {
 
 // FileManifestsModel describes the resource data model.
 type FileManifestsModel struct {
-	FileNames pmodel.Files `tfsdk:"file_data"`
-	Documents types.Map    `tfsdk:"documents"`
+	FileNames FilesModel `tfsdk:"file_data"`
+	Manifests types.Map  `tfsdk:"manifests"`
 }
 
 func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -50,11 +51,11 @@ func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataReq
 func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Read yaml from a list of files and return all the inner documents",
+		MarkdownDescription: "Read yaml from a list of files and return all the inner manifests",
 
 		Attributes: map[string]schema.Attribute{
-			"file_data": pmodel.FileListSchema(true),
-			"documents": pmodel.ManifestMapSchema(),
+			"file_data": FileListSchema(true),
+			"manifests": ManifestMapSchema(),
 		},
 	}
 }
@@ -78,26 +79,39 @@ func (r *FileManifests) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 }
 
-func (r *FileManifests) readDocumentsFromReader(_ context.Context, reader io.Reader, _ *FileManifestsModel) []string {
+type manifestWithLineNumber struct {
+	lineNumber int
+	manifest   string
+}
+
+func (r *FileManifests) readManifestsFromReader(_ context.Context, reader io.Reader, _ *FileManifestsModel) []manifestWithLineNumber {
 	scanner := bufio.NewScanner(reader)
-	var document bytes.Buffer
-	var documents []string
+	var manifest bytes.Buffer
+	var manifests []manifestWithLineNumber
+	lineNumber := 0
 	for scanner.Scan() {
 		line := scanner.Text()
+		lineNumber++
 		if line == "---" {
-			if document.Len() >= 0 {
-				documents = append(documents, document.String())
+			if manifest.Len() >= 0 {
+				manifests = append(manifests, manifestWithLineNumber{
+					lineNumber: lineNumber,
+					manifest:   manifest.String(),
+				})
 			}
-			document.Reset()
+			manifest.Reset()
 			continue
 		}
-		document.WriteString(line)
-		document.WriteString("\n")
+		manifest.WriteString(line)
+		manifest.WriteString("\n")
 	}
-	if document.Len() >= 0 {
-		documents = append(documents, document.String())
+	if manifest.Len() >= 0 {
+		manifests = append(manifests, manifestWithLineNumber{
+			lineNumber: lineNumber,
+			manifest:   manifest.String(),
+		})
 	}
-	return documents
+	return manifests
 }
 
 func (r *FileManifests) expandTemplate(templateString string, values map[string]string) (string, error) {
@@ -119,7 +133,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
-	sm := pmodel.StringMap{}
+	sm := StringMap{}
 	sm.AddFileModel(&config.FileNames)
 
 	var values map[string]string
@@ -127,7 +141,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 	diags = config.FileNames.Values.ElementsAs(ctx, &values, false)
 	resp.Diagnostics.Append(diags...)
 
-	allDocuments := make(map[string]attr.Value)
+	allmanifests := make(map[string]attr.Value)
 
 	if !resp.Diagnostics.HasError() {
 		sm.ForEach(ctx, func(filename string, content string) error {
@@ -144,28 +158,29 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 			}
 
 			sr := strings.NewReader(content)
-			documents := r.readDocumentsFromReader(ctx, sr, &config)
-			for _, document := range documents {
+			manifests := r.readManifestsFromReader(ctx, sr, &config)
+			for _, manifestWithLineNumber := range manifests {
 
-				manifest, err := pmodel.ReadManifest(document)
+				manifest, err := ReadManifest(manifestWithLineNumber.manifest)
 				if err != nil {
-					resp.Diagnostics.AddError(
-						fmt.Sprintf("Failed to parse yaml from file %s", filename),
-						err.Error(),
-					)
+					if !errors.Is(err, io.EOF) {
+						resp.Diagnostics.AddError(
+							fmt.Sprintf("Failed to parse yaml from file %s line %d", filename, manifestWithLineNumber.lineNumber),
+							err.Error(),
+						)
+					}
 					continue
 				}
+				manifest.Source = fmt.Sprintf("%s:%d", filename, manifestWithLineNumber.lineNumber)
 				key := manifest.Key()
-				allDocuments[key], diags = types.ObjectValueFrom(ctx,pmodel.ManifestType, manifest)
+				allmanifests[key], diags = types.ObjectValueFrom(ctx, ManifestType, manifest)
 			}
 			return nil
 		})
 	}
 
-	if resp.Diagnostics.HasError() {
-
-	}
-
+	// Copy allmanifests elements to config.Manifests
+	config.Manifests, diags = basetypes.NewMapValue(types.ObjectType{AttrTypes: ManifestType}, allmanifests)
 	resp.Diagnostics.Append(diags...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)

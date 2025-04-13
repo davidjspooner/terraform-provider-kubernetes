@@ -1,4 +1,4 @@
-package pmodel
+package provider
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-type Files struct {
+type FilesModel struct {
 	Paths        types.List   `tfsdk:"paths"`
 	TemplateType types.String `tfsdk:"template_type"`
 	Values       types.Map    `tfsdk:"values"`
@@ -231,7 +231,7 @@ func (sm *StringMap) addFileContents(path string, TemplateType string, values ma
 	return nil
 }
 
-func (sm *StringMap) AddFileModel(fm *Files) error {
+func (sm *StringMap) AddFileModel(fm *FilesModel) error {
 	if fm == nil {
 		return nil
 	}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -35,11 +34,11 @@ type KubernetesGet struct {
 
 // GetResourceModel describes the resource data model.
 type GetResourceModel struct {
-	ApiVersion types.String          `tfsdk:"api_version"`
-	Kind       types.String          `tfsdk:"kind"`
-	Metadata   *pmodel.ShortMetadata `tfsdk:"metadata"`
+	ApiVersion types.String   `tfsdk:"api_version"`
+	Kind       types.String   `tfsdk:"kind"`
+	Metadata   *ShortMetadata `tfsdk:"metadata"`
 
-	Querry pmodel.QuerryList `tfsdk:"querry"`
+	Querry QuerryList `tfsdk:"querry"`
 
 	Captured types.Map `tfsdk:"captured"`
 
@@ -48,7 +47,7 @@ type GetResourceModel struct {
 
 	Retry *job.RetryModel `tfsdk:"retry"`
 
-	pmodel.OutputMetadata
+	OutputMetadata
 }
 
 func (r *KubernetesGet) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -81,7 +80,7 @@ func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, 
 				Required:            true,
 			},
 			"retry":  job.RetryModelSchema(),
-			"querry": pmodel.QuerrySchemaList(true),
+			"querry": QuerrySchemaList(true),
 			"captured": schema.MapAttribute{
 				MarkdownDescription: "Captured data",
 				ElementType:         types.StringType,
@@ -101,7 +100,7 @@ func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, 
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": pmodel.ShortMetadataSchemaBlock(),
+			"metadata": ShortMetadataSchemaBlock(),
 		},
 	}
 }
@@ -125,9 +124,9 @@ func (r *KubernetesGet) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 }
 
-func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, data *GetResourceModel) (*pmodel.CaptureMap, error) {
+func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, data *GetResourceModel) (*CaptureMap, error) {
 
-	var captureMap pmodel.CaptureMap
+	var captureMap CaptureMap
 	var err error
 	unstructured, err := r.provider.Shared.Get(ctx, key)
 	if err != nil {
@@ -147,7 +146,7 @@ func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, 
 
 func (r *KubernetesGet) checkValuesWithRetry(ctx context.Context, key *kresource.Key, data *GetResourceModel, diags *diag.Diagnostics) {
 
-	var savedCaptureMap *pmodel.CaptureMap
+	var savedCaptureMap *CaptureMap
 
 	err := r.retry(ctx, data, func(ctx context.Context, attempt int) error {
 		var innerErr error

@@ -1,4 +1,4 @@
-package pmodel
+package provider
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-type Querry struct {
+type QuerryModel struct {
 	Select  types.String `tfsdk:"select"`
 	Match   types.String `tfsdk:"match"`
 	Capture types.String `tfsdk:"capture"`
@@ -41,7 +41,7 @@ func QuerrySchemaList(required bool) schema.ListNestedAttribute {
 	}
 }
 
-func (w *Querry) Check(object interface{}) (interface{}, error) {
+func (w *QuerryModel) Check(object interface{}) (interface{}, error) {
 	var err error
 
 	if w.path == nil {
@@ -76,7 +76,7 @@ func (w *Querry) Check(object interface{}) (interface{}, error) {
 	return v, nil
 }
 
-type QuerryList []*Querry
+type QuerryList []*QuerryModel
 
 type CaptureMap map[string]any
 

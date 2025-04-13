@@ -1,28 +1,34 @@
-package kresource
+package provider
 
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
+type OutputMetadata struct {
+	ResourceVersion types.String `tfsdk:"resource_version"`
+	UID             types.String `tfsdk:"uid"`
+	Generation      types.Int64  `tfsdk:"generation"`
+}
+
 type CrudHelper struct {
 	Plan, Actual, State unstructured.Unstructured
 	RetryHelper         *job.RetryHelper
-	Shared              *Shared
+	Shared              *kresource.Shared
 }
 
-func GetKey(r unstructured.Unstructured) *Key {
+func GetKey(r unstructured.Unstructured) *kresource.Key {
 	if r.Object == nil {
 		return nil
 	}
-	k := Key{}
+	k := kresource.Key{}
 	k.ApiVersion = r.GetAPIVersion()
 	k.Kind = r.GetKind()
 	k.MetaData.Name = r.GetName()
@@ -31,21 +37,21 @@ func GetKey(r unstructured.Unstructured) *Key {
 	return &k
 }
 
-func (helper *CrudHelper) ReadActual(ctx context.Context, output *pmodel.OutputMetadata) (bool, error) {
+func (helper *CrudHelper) ReadActual(ctx context.Context, output *OutputMetadata) (bool, error) {
 	changed := false
 	ctx, cancel := helper.RetryHelper.SetDeadline(ctx)
 	defer cancel()
 	key := GetKey(helper.State)
 	var err error
 	helper.Actual, err = helper.Shared.Get(ctx, key)
-	if ErrorIsNotFound(err) {
+	if kresource.ErrorIsNotFound(err) {
 		helper.State = unstructured.Unstructured{}
 		return changed, nil
 	}
 	changed = helper.getResourceVersionInfo(output)
 	return changed, nil
 }
-func (helper *CrudHelper) ApplyPlan(ctx context.Context) error {
+func (helper *CrudHelper) ApplyPlan(ctx context.Context, output *OutputMetadata) error {
 	ctx, cancel := helper.RetryHelper.SetDeadline(ctx)
 	defer cancel()
 
@@ -54,11 +60,15 @@ func (helper *CrudHelper) ApplyPlan(ctx context.Context) error {
 		err2 := helper.Shared.Apply(ctx, key, helper.Plan)
 		return err2
 	})
+	if err != nil {
+		return err
+	}
+	helper.getResourceVersionInfo(output)
 	return err
 }
 
-func (helper *CrudHelper) CreateFromPlan(ctx context.Context) error {
-	return helper.ApplyPlan(ctx)
+func (helper *CrudHelper) CreateFromPlan(ctx context.Context, output *OutputMetadata) error {
+	return helper.ApplyPlan(ctx, output)
 }
 
 var invariants = []string{".metadata.name", ".metadata.namespace", ".kind", ".apiVersion"}
@@ -78,16 +88,7 @@ func DiffContainsInvariant(diffs []string) bool {
 //	Right interface{}
 //}
 
-func DiffResources(left, right interface{}) ([]string, error) {
-	var differences []string
-	handleDifferences := DifferenceHandlerFunc(func(path string, left, right interface{}) error {
-		differences = append(differences, path)
-		return nil
-	})
-	err := compareReflect("", reflect.ValueOf(left), reflect.ValueOf(right), handleDifferences)
-	return differences, err
-}
-func (helper *CrudHelper) Update(ctx context.Context) error {
+func (helper *CrudHelper) Update(ctx context.Context, output *OutputMetadata) error {
 
 	//check for invariant violations
 	needRecreate := false
@@ -95,7 +96,7 @@ func (helper *CrudHelper) Update(ctx context.Context) error {
 	key := GetKey(helper.State)
 	actual, err := helper.Shared.Get(ctx, key)
 	if err == nil {
-		diffs, _ := DiffResources(actual, helper.Plan)
+		diffs, _ := kresource.DiffResources(actual, helper.Plan)
 		if DiffContainsInvariant(diffs) {
 			needRecreate = true
 		}
@@ -112,13 +113,13 @@ func (helper *CrudHelper) Update(ctx context.Context) error {
 			return err
 		}
 	}
-	return helper.ApplyPlan(ctx)
+	return helper.ApplyPlan(ctx, output)
 }
 
-func (helper *CrudHelper) delete(ctx context.Context, key *Key) error {
+func (helper *CrudHelper) delete(ctx context.Context, key *kresource.Key) error {
 	err := helper.RetryHelper.Retry(ctx, func(ctx context.Context, attempt int) error {
 		err := helper.Shared.Delete(ctx, key)
-		if err != nil && !ErrorIsNotFound(err) {
+		if err != nil && !kresource.ErrorIsNotFound(err) {
 			return err
 		}
 		return nil
@@ -155,7 +156,7 @@ func (helper *CrudHelper) Retry(ctx context.Context, task func(context.Context, 
 	return helper.RetryHelper.Retry(ctx, task)
 }
 
-func (helper *CrudHelper) getResourceVersionInfo(output *pmodel.OutputMetadata) bool {
+func (helper *CrudHelper) getResourceVersionInfo(output *OutputMetadata) bool {
 	changed := false
 	if helper.Actual.Object == nil {
 		output.Generation = basetypes.NewInt64Value(0)

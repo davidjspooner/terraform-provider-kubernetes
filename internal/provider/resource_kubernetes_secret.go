@@ -9,12 +9,13 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/vpath"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -41,7 +42,7 @@ type SecretModel struct {
 
 func (dmm *SecretModel) Manifest() (unstructured.Unstructured, error) {
 
-	sm := &pmodel.StringMap{}
+	sm := &StringMap{}
 	sm.SetBase64Encoded(true)
 
 	err := sm.AddFileModel(dmm.Filenames)
@@ -91,7 +92,7 @@ func (r *Secret) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
-			"file_data": pmodel.FileListSchema(false),
+			"file_data": FileListSchema(false),
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Data to store in the secret",
 				ElementType:         types.StringType,
@@ -122,7 +123,7 @@ func (r *Secret) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": pmodel.LongMetadataSchemaBlock(),
+			"metadata": LongMetadataSchemaBlock(),
 		},
 	}
 }
@@ -146,8 +147,8 @@ func (r *Secret) Configure(ctx context.Context, req resource.ConfigureRequest, r
 	}
 }
 
-func (r *Secret) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
-	helper := &kresource.CrudHelper{
+func (r *Secret) newCrudHelper(retryModel *job.RetryModel) (*CrudHelper, error) {
+	helper := &CrudHelper{
 		Shared: &r.provider.Shared,
 	}
 	var err error
@@ -185,7 +186,12 @@ func (r *Secret) Create(ctx context.Context, req resource.CreateRequest, resp *r
 		return
 	}
 
-	err = helper.CreateFromPlan(ctx)
+	s := plan.Type.ValueString()
+	if s == "" {
+		plan.Type = basetypes.NewStringValue("Opaque")
+	}
+
+	err = helper.CreateFromPlan(ctx, &plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create resource", err.Error())
 		return
@@ -219,6 +225,7 @@ func (r *Secret) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 	}
 
 	changed, err := helper.ReadActual(ctx, &state.OutputMetadata)
+	_ = changed
 	if err != nil {
 		if kresource.ErrorIsNotFound(err) {
 			//ok so we have to update the state to say it is stale
@@ -229,38 +236,41 @@ func (r *Secret) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 		return
 	}
 
-	if changed {
-		// key := kresource.GetKey(stateResource)
-		// actualUnstructured, err := r.provider.Shared.Get(ctx, key)
-		//
-		//	if err != nil {
-		//		if kresource.ErrorIsNotFound(err) {
-		//			//ok so we have to update the state to say it is stale
-		//			resp.State.RemoveResource(ctx)
-		//		} else {
-		//			resp.Diagnostics.AddError("Failed to fetch resource", err.Error())
-		//		}
-		//	} else {
-		//
-		//		//compare state with current
-		//		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
-		//		for _, diff := range diffs {
-		//			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
-		//		}
-		//		if err != nil {
-		//			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
-		//			return
-		//		} else {
-		//			s, err := kresource.FormatYaml(actualUnstructured)
-		//			if err != nil {
-		//				resp.Diagnostics.AddError("Failed to format actual", err.Error())
-		//				return
-		//			}
-		//			_ = s
-		//		}
-		//	}
-		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	path := vpath.MustCompile("type")
+	s, _ := vpath.Evaluate[string](path, helper.Actual.Object)
+	if s != "" {
+		state.Type = basetypes.NewStringValue(s)
 	}
+	// key := kresource.GetKey(stateResource)
+	// actualUnstructured, err := r.provider.Shared.Get(ctx, key)
+	//
+	//	if err != nil {
+	//		if kresource.ErrorIsNotFound(err) {
+	//			//ok so we have to update the state to say it is stale
+	//			resp.State.RemoveResource(ctx)
+	//		} else {
+	//			resp.Diagnostics.AddError("Failed to fetch resource", err.Error())
+	//		}
+	//	} else {
+	//
+	//		//compare state with current
+	//		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
+	//		for _, diff := range diffs {
+	//			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
+	//		}
+	//		if err != nil {
+	//			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
+	//			return
+	//		} else {
+	//			s, err := kresource.FormatYaml(actualUnstructured)
+	//			if err != nil {
+	//				resp.Diagnostics.AddError("Failed to format actual", err.Error())
+	//				return
+	//			}
+	//			_ = s
+	//		}
+	//	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *Secret) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -270,6 +280,10 @@ func (r *Secret) Update(ctx context.Context, req resource.UpdateRequest, resp *r
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if plan.Type.IsNull() {
+		plan.Type = basetypes.NewStringValue("Opaque")
+	}
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -291,7 +305,7 @@ func (r *Secret) Update(ctx context.Context, req resource.UpdateRequest, resp *r
 		return
 	}
 
-	err = helper.Update(ctx)
+	err = helper.Update(ctx, &plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update resource", err.Error())
 		return

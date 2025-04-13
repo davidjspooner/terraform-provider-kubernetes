@@ -9,7 +9,6 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -37,7 +36,7 @@ type NamespaceModel struct {
 	MetaData kresource.MetaData `tfsdk:"metadata"`
 
 	Retry *job.RetryModel `tfsdk:"retry"`
-	pmodel.OutputMetadata
+	OutputMetadata
 }
 
 func (nsm *NamespaceModel) Manifest() (unstructured.Unstructured, error) {
@@ -78,7 +77,7 @@ func (r *Namespace) Schema(ctx context.Context, req resource.SchemaRequest, resp
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": pmodel.LongMetadataSchemaBlock(),
+			"metadata": LongMetadataSchemaBlock(),
 		},
 	}
 }
@@ -102,8 +101,8 @@ func (r *Namespace) Configure(ctx context.Context, req resource.ConfigureRequest
 	}
 }
 
-func (r *Namespace) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
-	helper := &kresource.CrudHelper{
+func (r *Namespace) newCrudHelper(retryModel *job.RetryModel) (*CrudHelper, error) {
+	helper := &CrudHelper{
 		Shared: &r.provider.Shared,
 	}
 	var err error
@@ -141,7 +140,7 @@ func (r *Namespace) Create(ctx context.Context, req resource.CreateRequest, resp
 		return
 	}
 
-	err = helper.CreateFromPlan(ctx)
+	err = helper.CreateFromPlan(ctx, &plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create resource", err.Error())
 		return
@@ -247,7 +246,7 @@ func (r *Namespace) Update(ctx context.Context, req resource.UpdateRequest, resp
 		return
 	}
 
-	err = helper.Update(ctx)
+	err = helper.Update(ctx, &plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update resource", err.Error())
 		return

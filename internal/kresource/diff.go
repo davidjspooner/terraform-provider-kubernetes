@@ -161,3 +161,13 @@ func safeInterface(v reflect.Value) interface{} {
 }
 
 //----
+
+func DiffResources(left, right interface{}) ([]string, error) {
+	var differences []string
+	handleDifferences := DifferenceHandlerFunc(func(path string, left, right interface{}) error {
+		differences = append(differences, path)
+		return nil
+	})
+	err := compareReflect("", reflect.ValueOf(left), reflect.ValueOf(right), handleDifferences)
+	return differences, err
+}

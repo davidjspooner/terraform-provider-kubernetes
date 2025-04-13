@@ -1,4 +1,4 @@
-package pmodel
+package provider
 
 import (
 	"strings"
@@ -10,10 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Manifest struct {
-	Kind    string `tfsdk:"kind"`
-	Name    string `tfsdk:"name"`
-	Content string `tfsdk:"content"`
+type ManifestModel struct {
+	Kind     string `tfsdk:"kind"`
+	Name     string `tfsdk:"name"`
+	Manifest string `tfsdk:"manifest"`
+	Source   string `tfsdk:"source"`
 }
 
 func ManifestMapSchema() schema.Attribute {
@@ -22,13 +23,20 @@ func ManifestMapSchema() schema.Attribute {
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
 				"kind": schema.StringAttribute{
-					MarkdownDescription: "The kind of the resource .",
+					MarkdownDescription: "The extracted kind of the resource .",
+					Computed:            true,
 				},
 				"name": schema.StringAttribute{
-					MarkdownDescription: "The name of the resource manifest.",
+					MarkdownDescription: "The extracted name of the resource manifest.",
+					Computed:            true,
 				},
-				"content": schema.StringAttribute{
-					MarkdownDescription: "The entire content of the resource manifest",
+				"manifest": schema.StringAttribute{
+					MarkdownDescription: "The entire manifest ( as yaml text ) of the resource.",
+					Computed:            true,
+				},
+				"source": schema.StringAttribute{
+					MarkdownDescription: "The source of the resource manifest.",
+					Computed:            true,
 				},
 			},
 		},
@@ -41,7 +49,7 @@ var kindPath = vpath.MustCompile("kind")
 var namePath = vpath.MustCompile("metadata.name")
 
 // ReadManifest reads manifest text and returns a Manifest object.
-func ReadManifest(text string) (*Manifest, error) {
+func ReadManifest(text string) (*ManifestModel, error) {
 	var tmp map[string]interface{}
 	r := strings.NewReader(text)
 	decoder := yaml.NewDecoder(r)
@@ -49,25 +57,26 @@ func ReadManifest(text string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	manifest := &Manifest{}
-	manifest.Kind, err = vpath.Evaluate[string](namePath, tmp)
+	manifest := &ManifestModel{}
+	manifest.Kind, err = vpath.Evaluate[string](kindPath, tmp)
 	if err != nil {
 		return nil, err
 	}
-	manifest.Name, err = vpath.Evaluate[string](kindPath, tmp)
+	manifest.Name, err = vpath.Evaluate[string](namePath, tmp)
 	if err != nil {
 		return nil, err
 	}
-	manifest.Content = text
+	manifest.Manifest = text
 	return manifest, nil
 }
 
-func (m *Manifest) Key() string {
+func (m *ManifestModel) Key() string {
 	return m.Kind + "/" + m.Name
 }
 
 var ManifestType = map[string]attr.Type{
-	"kind":    types.StringType,
-	"name":    types.StringType,
-	"content": types.StringType,
+	"kind":     types.StringType,
+	"name":     types.StringType,
+	"manifest": types.StringType,
+	"source":   types.StringType,
 }

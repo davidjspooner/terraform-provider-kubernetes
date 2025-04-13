@@ -15,6 +15,11 @@ func MustCompile(s string) Path {
 
 func Compile(text string) (Path, error) {
 	var s scanner.Scanner
+
+	if len(text) > 0 && (text[0] != '.') && (text[0] != '[') {
+		text = "." + text
+	}
+
 	s.Init(strings.NewReader(text))
 	s.Mode ^= scanner.SkipComments // don't skip comments
 	s.Whitespace = 0

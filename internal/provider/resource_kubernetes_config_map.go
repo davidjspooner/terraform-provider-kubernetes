@@ -9,7 +9,6 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -37,17 +36,17 @@ type ConfigMap struct {
 type ConfigMapModel struct {
 	MetaData   kresource.MetaData `tfsdk:"metadata"`
 	Immutable  types.Bool         `tfsdk:"immutable"`
-	Filenames  *pmodel.Files      `tfsdk:"file_data"`
+	Filenames  *FilesModel        `tfsdk:"file_data"`
 	Data       types.Map          `tfsdk:"data"`
 	BinaryData types.Map          `tfsdk:"binary_data"`
 	Retry      *job.RetryModel    `tfsdk:"retry"`
 
-	pmodel.OutputMetadata
+	OutputMetadata
 }
 
 func (dmm *ConfigMapModel) Manifest() (unstructured.Unstructured, error) {
 
-	sm := &pmodel.StringMap{}
+	sm := &StringMap{}
 	sm.SetBase64Encoded(false)
 
 	err := sm.AddFileModel(dmm.Filenames)
@@ -93,7 +92,7 @@ func (r *ConfigMap) Schema(ctx context.Context, req resource.SchemaRequest, resp
 				Optional:            true,
 			},
 			"retry":     job.RetryModelSchema(),
-			"file_data": pmodel.FileListSchema(false),
+			"file_data": FileListSchema(false),
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Data to store in the configmap",
 				ElementType:         types.StringType,
@@ -118,7 +117,7 @@ func (r *ConfigMap) Schema(ctx context.Context, req resource.SchemaRequest, resp
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": pmodel.LongMetadataSchemaBlock(),
+			"metadata": LongMetadataSchemaBlock(),
 		},
 	}
 }
@@ -142,8 +141,8 @@ func (r *ConfigMap) Configure(ctx context.Context, req resource.ConfigureRequest
 	}
 }
 
-func (r *ConfigMap) newCrudHelper(retryModel *job.RetryModel) (*kresource.CrudHelper, error) {
-	helper := &kresource.CrudHelper{
+func (r *ConfigMap) newCrudHelper(retryModel *job.RetryModel) (*CrudHelper, error) {
+	helper := &CrudHelper{
 		Shared: &r.provider.Shared,
 	}
 	var err error
@@ -181,7 +180,7 @@ func (r *ConfigMap) Create(ctx context.Context, req resource.CreateRequest, resp
 		return
 	}
 
-	err = helper.CreateFromPlan(ctx)
+	err = helper.CreateFromPlan(ctx,&plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create resource", err.Error())
 		return
@@ -282,7 +281,7 @@ func (r *ConfigMap) Update(ctx context.Context, req resource.UpdateRequest, resp
 		return
 	}
 
-	err = helper.Update(ctx)
+	err = helper.Update(ctx,&plan.OutputMetadata)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update resource", err.Error())
 		return
