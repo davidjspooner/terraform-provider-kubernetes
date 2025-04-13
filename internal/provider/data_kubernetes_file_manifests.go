@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
+	"strings"
 	"text/template"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
@@ -25,23 +25,26 @@ import (
 var _ datasource.DataSource = &FileManifests{}
 
 func NewFileManifests() datasource.DataSource {
-	r := &FileManifests{}
+	r := &FileManifests{
+		prometheusTypeNameSuffix: "_manifest_files",
+	}
 	return r
 }
 
 // FileManifests defines the resource implementation.
 type FileManifests struct {
-	provider *KubernetesProvider
+	provider                 *KubernetesProvider
+	prometheusTypeNameSuffix string
 }
 
 // FileManifestsModel describes the resource data model.
 type FileManifestsModel struct {
-	File      pmodel.Files `tfsdk:"file"`
-	Documents types.Set    `tfsdk:"documents"`
+	FileNames pmodel.Files `tfsdk:"file_data"`
+	Documents types.Map    `tfsdk:"documents"`
 }
 
 func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_manifest_files"
+	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
 }
 
 func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -50,12 +53,8 @@ func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest
 		MarkdownDescription: "Read yaml from a list of files and return all the inner documents",
 
 		Attributes: map[string]schema.Attribute{
-			"file": pmodel.FileListSchema(true),
-			"documents": schema.SetAttribute{
-				MarkdownDescription: "Set of documents",
-				ElementType:         types.StringType,
-				Computed:            true,
-			},
+			"file_data": pmodel.FileListSchema(true),
+			"documents": pmodel.ManifestMapSchema(),
 		},
 	}
 }
@@ -79,7 +78,7 @@ func (r *FileManifests) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 }
 
-func (r *FileManifests) readDocumentsFromReader(_ context.Context, reader io.Reader, _ *FileManifestsModel) ([]string, error) {
+func (r *FileManifests) readDocumentsFromReader(_ context.Context, reader io.Reader, _ *FileManifestsModel) []string {
 	scanner := bufio.NewScanner(reader)
 	var document bytes.Buffer
 	var documents []string
@@ -98,76 +97,75 @@ func (r *FileManifests) readDocumentsFromReader(_ context.Context, reader io.Rea
 	if document.Len() >= 0 {
 		documents = append(documents, document.String())
 	}
-	return documents, nil
+	return documents
 }
 
-func (r *FileManifests) readDocumentsFromFile(ctx context.Context, filename string, config *FileManifestsModel) ([]string, error) {
-	// Read the file
-	values := config.File.Values.Elements()
-	if len(values) == 0 {
-		f, err := os.Open(filename)
-		if err != nil {
-			return nil, err
-		}
-
-		defer f.Close()
-		return r.readDocumentsFromReader(ctx, f, config)
-	}
-	// Render the file as a golang template
+func (r *FileManifests) expandTemplate(templateString string, values map[string]string) (string, error) {
 	t := template.New("file")
-	t, err := t.ParseFiles(filename)
+	t, err := t.Parse(templateString)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	expanded := bytes.Buffer{}
-	err = t.ExecuteTemplate(&expanded, filename, values)
+	var expanded bytes.Buffer
+	err = t.Execute(&expanded, values)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return r.readDocumentsFromReader(ctx, &expanded, config)
+	return expanded.String(), nil
 }
 
 func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config FileManifestsModel
-
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
-	filenames := config.File.Paths.Elements()
-	allDocuments := make([]attr.Value, 0, len(filenames))
+	sm := pmodel.StringMap{}
+	sm.AddFileModel(&config.FileNames)
 
-	for n := range filenames {
-		filename := filenames[n].String()
-		stats, err := os.Stat(filename)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				fmt.Sprintf("Failed to stat file %s", filename),
-				err.Error(),
-			)
-			continue
-		}
-		if stats.IsDir() {
-			resp.Diagnostics.AddError(
-				fmt.Sprintf("Failed to read file %s", filename),
-				"Is a directory",
-			)
-		} else {
-			documents, err := r.readDocumentsFromFile(ctx, filename, &config)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					fmt.Sprintf("Failed to read file %s", filename),
-					err.Error(),
-				)
-				continue
+	var values map[string]string
+	var diags diag.Diagnostics
+	diags = config.FileNames.Values.ElementsAs(ctx, &values, false)
+	resp.Diagnostics.Append(diags...)
+
+	allDocuments := make(map[string]attr.Value)
+
+	if !resp.Diagnostics.HasError() {
+		sm.ForEach(ctx, func(filename string, content string) error {
+			var err error
+			if len(values) > 0 {
+				content, err = r.expandTemplate(content, values)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						fmt.Sprintf("Failed to expand file %s", filename),
+						err.Error(),
+					)
+					return err
+				}
 			}
+
+			sr := strings.NewReader(content)
+			documents := r.readDocumentsFromReader(ctx, sr, &config)
 			for _, document := range documents {
-				allDocuments = append(allDocuments, types.StringValue(document))
+
+				manifest, err := pmodel.ReadManifest(document)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						fmt.Sprintf("Failed to parse yaml from file %s", filename),
+						err.Error(),
+					)
+					continue
+				}
+				key := manifest.Key()
+				allDocuments[key], diags = types.ObjectValueFrom(ctx,pmodel.ManifestType, manifest)
 			}
-		}
+			return nil
+		})
 	}
 
-	var diags diag.Diagnostics
-	config.Documents, diags = types.SetValue(types.StringType, allDocuments)
+	if resp.Diagnostics.HasError() {
+
+	}
+
 	resp.Diagnostics.Append(diags...)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)

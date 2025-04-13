@@ -6,11 +6,8 @@ package provider
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
-	"github.com/davidjspooner/dsvalue/pkg/reflected"
-	"github.com/davidjspooner/dsvalue/pkg/value"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
@@ -24,13 +21,16 @@ import (
 var _ resource.Resource = &KubernetesGet{}
 
 func NewResourceGet() resource.Resource {
-	r := &KubernetesGet{}
+	r := &KubernetesGet{
+		prometheusTypeNameSuffix: "_get",
+	}
 	return r
 }
 
 // KubernetesGet defines the resource implementation.
 type KubernetesGet struct {
-	provider *KubernetesProvider
+	provider                 *KubernetesProvider
+	prometheusTypeNameSuffix string
 }
 
 // GetResourceModel describes the resource data model.
@@ -41,16 +41,18 @@ type GetResourceModel struct {
 
 	Querry pmodel.QuerryList `tfsdk:"querry"`
 
-	Retry *job.RetryModel `tfsdk:"retry"`
-
 	Captured types.Map `tfsdk:"captured"`
 
 	State       types.String `tfsdk:"state"`
 	LastChecked types.String `tfsdk:"last_checked"`
+
+	Retry *job.RetryModel `tfsdk:"retry"`
+
+	pmodel.OutputMetadata
 }
 
 func (r *KubernetesGet) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_get"
+	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
 }
 
 func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -83,6 +85,18 @@ func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, 
 			"captured": schema.MapAttribute{
 				MarkdownDescription: "Captured data",
 				ElementType:         types.StringType,
+				Computed:            true,
+			},
+			"resource_version": schema.StringAttribute{
+				MarkdownDescription: "The resource version.",
+				Computed:            true,
+			},
+			"uid": schema.StringAttribute{
+				MarkdownDescription: "The unique identifier of the resource.",
+				Computed:            true,
+			},
+			"generation": schema.Int64Attribute{
+				MarkdownDescription: "The generation of the resource.",
 				Computed:            true,
 			},
 		},
@@ -121,11 +135,7 @@ func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, 
 	}
 
 	querryList := &data.Querry
-	object, err := reflected.NewReflectedObject(reflect.ValueOf(unstructured.Object), value.UnknownSource)
-	if err != nil {
-		return nil, err
-	}
-	captureMap, err = querryList.Check(object)
+	captureMap, err = querryList.Check(unstructured.Object)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +145,7 @@ func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, 
 	return &captureMap, nil
 }
 
-func (r *KubernetesGet) checvaluesWithRetry(ctx context.Context, key *kresource.Key, data *GetResourceModel, diags *diag.Diagnostics) {
+func (r *KubernetesGet) checkValuesWithRetry(ctx context.Context, key *kresource.Key, data *GetResourceModel, diags *diag.Diagnostics) {
 
 	var savedCaptureMap *pmodel.CaptureMap
 
@@ -185,50 +195,50 @@ func (r *KubernetesGet) Create(ctx context.Context, req resource.CreateRequest, 
 		},
 	}
 
-	r.checvaluesWithRetry(ctx, &key, &data, &resp.Diagnostics)
+	r.checkValuesWithRetry(ctx, &key, &data, &resp.Diagnostics)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *KubernetesGet) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data GetResourceModel
+	var state GetResourceModel
 
 	// Read Terraform prior state data into the model
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	var namespace string
-	if data.Metadata.Namespace.IsNull() {
+	if state.Metadata.Namespace.IsNull() {
 		namespace = r.provider.Shared.GetNamespace(nil)
 	} else {
-		namespace = data.Metadata.Namespace.ValueString()
+		namespace = state.Metadata.Namespace.ValueString()
 	}
 
 	key := kresource.Key{
-		Kind:       data.Kind.ValueString(),
-		ApiVersion: data.ApiVersion.ValueString(),
+		Kind:       state.Kind.ValueString(),
+		ApiVersion: state.ApiVersion.ValueString(),
 		MetaData: kresource.MetaData{
 			Namespace: &namespace,
-			Name:      data.Metadata.Name.ValueString(),
+			Name:      state.Metadata.Name.ValueString(),
 		},
 	}
 
-	savedCaptureMap, err := r.checvaluesOnce(ctx, &key, &data)
+	savedCaptureMap, err := r.checvaluesOnce(ctx, &key, &state)
 
 	if err != nil {
-		data.State = types.StringValue("stale")
+		state.State = types.StringValue("stale")
 	} else {
 		var subDiags diag.Diagnostics
-		data.Captured, subDiags = types.MapValueFrom(ctx, types.StringType, *savedCaptureMap)
+		state.Captured, subDiags = types.MapValueFrom(ctx, types.StringType, *savedCaptureMap)
 		resp.Diagnostics.Append(subDiags...)
 	}
 
-	data.LastChecked = types.StringValue(time.Now().Format(time.RFC3339Nano))
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	state.LastChecked = types.StringValue(time.Now().Format(time.RFC3339Nano))
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *KubernetesGet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -257,7 +267,7 @@ func (r *KubernetesGet) Update(ctx context.Context, req resource.UpdateRequest, 
 		},
 	}
 
-	r.checvaluesWithRetry(ctx, &key, &data, &resp.Diagnostics)
+	r.checkValuesWithRetry(ctx, &key, &data, &resp.Diagnostics)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

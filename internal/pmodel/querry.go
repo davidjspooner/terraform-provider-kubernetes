@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/davidjspooner/dsvalue/pkg/path"
-	"github.com/davidjspooner/dsvalue/pkg/value"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/vpath"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -15,7 +14,7 @@ type Querry struct {
 	Match   types.String `tfsdk:"match"`
 	Capture types.String `tfsdk:"capture"`
 
-	path   path.Path
+	path   vpath.Path
 	regexp *regexp.Regexp
 }
 
@@ -42,11 +41,11 @@ func QuerrySchemaList(required bool) schema.ListNestedAttribute {
 	}
 }
 
-func (w *Querry) Check(object value.Value) (interface{}, error) {
+func (w *Querry) Check(object interface{}) (interface{}, error) {
 	var err error
 
 	if w.path == nil {
-		w.path, err = path.CompilePath(w.Select.ValueString())
+		w.path, err = vpath.Compile(w.Select.ValueString())
 		if err != nil {
 			return nil, err
 		}
@@ -60,12 +59,11 @@ func (w *Querry) Check(object value.Value) (interface{}, error) {
 		}
 	}
 
-	leaf, err := w.path.EvaluateFor(object)
+	v, err := w.path.EvaluateFor(object)
 	if err != nil {
 		return nil, err
 	}
 
-	v := leaf.WithoutSource()
 	if w.regexp != nil {
 		s, ok := v.(string)
 		if !ok {
@@ -82,7 +80,7 @@ type QuerryList []*Querry
 
 type CaptureMap map[string]any
 
-func (ql QuerryList) Check(object value.Value) (CaptureMap, error) {
+func (ql QuerryList) Check(object interface{}) (CaptureMap, error) {
 	captured := make(map[string]any)
 	for _, w := range ql {
 		value, err := w.Check(object)

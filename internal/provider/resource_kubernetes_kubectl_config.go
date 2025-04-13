@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/pmodel"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -19,13 +20,16 @@ import (
 var _ resource.Resource = &Config{}
 var _ resource.ResourceWithImportState = &Config{}
 
-func NewClusterConfig() resource.Resource {
-	return &Config{}
+func NewKubeCtlConfig() resource.Resource {
+	return &Config{
+		prometheusTypeNameSuffix: "_kubectl_config",
+	}
 }
 
 // Config defines the resource implementation.
 type Config struct {
-	provider *KubernetesProvider
+	provider                 *KubernetesProvider
+	prometheusTypeNameSuffix string
 }
 
 // ConfigModel describes the resource data model.
@@ -34,10 +38,12 @@ type ConfigModel struct {
 	Server         types.String `tfsdk:"server"`
 	SourceFilename types.String `tfsdk:"source_filename"`
 	TargetFilename types.String `tfsdk:"target_filename"`
+
+	pmodel.OutputMetadata
 }
 
 func (r *Config) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_cluster_config"
+	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
 }
 
 func (r *Config) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -61,6 +67,18 @@ func (r *Config) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			"target_filename": schema.StringAttribute{
 				MarkdownDescription: "File to merge config into",
 				Required:            true,
+			},
+			"resource_version": schema.StringAttribute{
+				MarkdownDescription: "The resource version.",
+				Computed:            true,
+			},
+			"uid": schema.StringAttribute{
+				MarkdownDescription: "The unique identifier of the resource.",
+				Computed:            true,
+			},
+			"generation": schema.Int64Attribute{
+				MarkdownDescription: "The generation of the resource.",
+				Computed:            true,
 			},
 		},
 	}

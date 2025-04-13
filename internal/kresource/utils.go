@@ -49,6 +49,9 @@ func ExpandEnv(path string) (string, error) {
 }
 
 func ErrorIsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
 	errStr := err.Error()
 	for _, match := range []string{"not found", "no matches for kind", "not found:", "not found (get)"} {
 		if strings.Contains(errStr, match) {

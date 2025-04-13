@@ -21,18 +21,23 @@ var _ resource.Resource = &Namespace{}
 var _ resource.ResourceWithImportState = &Namespace{}
 
 func NewNamespace() resource.Resource {
-	return &Namespace{}
+	return &Namespace{
+		prometheusTypeNameSuffix: "_namespace",
+	}
 }
 
 // Namespace defines the resource implementation.
 type Namespace struct {
-	provider *KubernetesProvider
+	provider                 *KubernetesProvider
+	prometheusTypeNameSuffix string
 }
 
 // NamespaceModel describes the resource data model.
 type NamespaceModel struct {
 	MetaData kresource.MetaData `tfsdk:"metadata"`
-	Retry    *job.RetryModel    `tfsdk:"retry"`
+
+	Retry *job.RetryModel `tfsdk:"retry"`
+	pmodel.OutputMetadata
 }
 
 func (nsm *NamespaceModel) Manifest() (unstructured.Unstructured, error) {
@@ -51,7 +56,7 @@ func (nsm *NamespaceModel) Manifest() (unstructured.Unstructured, error) {
 }
 
 func (r *Namespace) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_namespace"
+	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
 }
 
 func (r *Namespace) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -59,6 +64,18 @@ func (r *Namespace) Schema(ctx context.Context, req resource.SchemaRequest, resp
 		MarkdownDescription: "A Kubernetes Namespace resource. This resource manages the lifecycle of a Kubernetes namespace.",
 		Attributes: map[string]schema.Attribute{
 			"retry": job.RetryModelSchema(),
+			"resource_version": schema.StringAttribute{
+				MarkdownDescription: "The resource version.",
+				Computed:            true,
+			},
+			"uid": schema.StringAttribute{
+				MarkdownDescription: "The unique identifier of the resource.",
+				Computed:            true,
+			},
+			"generation": schema.Int64Attribute{
+				MarkdownDescription: "The generation of the resource.",
+				Computed:            true,
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"metadata": pmodel.LongMetadataSchemaBlock(),
@@ -145,14 +162,19 @@ func (r *Namespace) Read(ctx context.Context, req resource.ReadRequest, resp *re
 		return
 	}
 
-	stateResource, err := state.Manifest()
+	helper, err := r.newCrudHelper(nil)
+	if err != nil {
+		resp.Diagnostics.AddError("Initializing", err.Error())
+		return
+	}
+
+	helper.State, err = state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read resource tfstate", err.Error())
 		return
 	}
-	key := kresource.GetKey(stateResource)
-	actualUnstructured, err := r.provider.Shared.Get(ctx, key)
 
+	changed, err := helper.ReadActual(ctx, &state.OutputMetadata)
 	if err != nil {
 		if kresource.ErrorIsNotFound(err) {
 			//ok so we have to update the state to say it is stale
@@ -160,23 +182,40 @@ func (r *Namespace) Read(ctx context.Context, req resource.ReadRequest, resp *re
 		} else {
 			resp.Diagnostics.AddError("Failed to fetch resource", err.Error())
 		}
-	} else {
-		//compare state with current
-		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
-		for _, diff := range diffs {
-			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
-		}
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
-			return
-		} else {
-			s, err := kresource.FormatYaml(actualUnstructured)
-			if err != nil {
-				resp.Diagnostics.AddError("Failed to format actual", err.Error())
-				return
-			}
-			_ = s
-		}
+		return
+	}
+
+	// key := kresource.GetKey(stateResource)
+	// actualUnstructured, err := r.provider.Shared.Get(ctx, key)
+	//
+	//	if err != nil {
+	//		if kresource.ErrorIsNotFound(err) {
+	//			//ok so we have to update the state to say it is stale
+	//			resp.State.RemoveResource(ctx)
+	//		} else {
+	//			resp.Diagnostics.AddError("Failed to fetch resource", err.Error())
+	//		}
+	//	} else {
+	//
+	//		//compare state with current
+	//		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
+	//		for _, diff := range diffs {
+	//			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
+	//		}
+	//		if err != nil {
+	//			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
+	//			return
+	//		} else {
+	//			s, err := kresource.FormatYaml(actualUnstructured)
+	//			if err != nil {
+	//				resp.Diagnostics.AddError("Failed to format actual", err.Error())
+	//				return
+	//			}
+	//			_ = s
+	//		}
+	//	}
+	if changed {
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	}
 }
 

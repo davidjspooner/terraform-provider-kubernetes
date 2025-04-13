@@ -115,7 +115,7 @@ func (p *KubernetesProvider) Resources(ctx context.Context) []func() resource.Re
 	return []func() resource.Resource{
 		NewGenericResource,
 		NewResourceGet,
-		NewClusterConfig,
+		NewKubeCtlConfig,
 		NewConfigMap,
 		NewSecret,
 		NewNamespace,

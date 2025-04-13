@@ -22,23 +22,21 @@ var _ resource.Resource = &Secret{}
 var _ resource.ResourceWithImportState = &Secret{}
 
 func NewSecret() resource.Resource {
-	return &Secret{}
+	return &Secret{
+		prometheusTypeNameSuffix: "_secret",
+	}
 }
 
 // Secret defines the resource implementation.
 type Secret struct {
-	provider *KubernetesProvider
+	provider                 *KubernetesProvider
+	prometheusTypeNameSuffix string
 }
 
 // SecretModel describes the resource data model.
 type SecretModel struct {
-	MetaData  kresource.MetaData `tfsdk:"metadata"`
-	Immutable types.Bool         `tfsdk:"immutable"`
-	Type      types.String       `tfsdk:"type"`
-	File      *pmodel.Files      `tfsdk:"file"`
-	Data      types.Map          `tfsdk:"data"`
-	B64Data   types.Map          `tfsdk:"b64data"`
-	Retry     *job.RetryModel    `tfsdk:"retry"`
+	Type types.String `tfsdk:"type"`
+	ConfigMapModel
 }
 
 func (dmm *SecretModel) Manifest() (unstructured.Unstructured, error) {
@@ -46,11 +44,11 @@ func (dmm *SecretModel) Manifest() (unstructured.Unstructured, error) {
 	sm := &pmodel.StringMap{}
 	sm.SetBase64Encoded(true)
 
-	err := sm.AddFileModel(dmm.File)
+	err := sm.AddFileModel(dmm.Filenames)
 	if err != nil {
 		return unstructured.Unstructured{}, err
 	}
-	err = sm.AddMaps(dmm.Data, dmm.B64Data)
+	err = sm.AddMaps(dmm.Data, dmm.BinaryData)
 	if err != nil {
 		return unstructured.Unstructured{}, err
 	}
@@ -82,7 +80,7 @@ func (dmm *SecretModel) Manifest() (unstructured.Unstructured, error) {
 }
 
 func (r *Secret) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_secret"
+	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
 }
 
 func (r *Secret) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -93,14 +91,13 @@ func (r *Secret) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
-			"retry": job.RetryModelSchema(),
-			"file":  pmodel.FileListSchema(false),
+			"file_data": pmodel.FileListSchema(false),
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Data to store in the secret",
 				ElementType:         types.StringType,
 				Optional:            true,
 			},
-			"b64data": schema.MapAttribute{
+			"binary_data": schema.MapAttribute{
 				MarkdownDescription: "Base64 encoded data to store in the secret ( will be base64 decoded )",
 				ElementType:         types.StringType,
 				Optional:            true,
@@ -108,6 +105,20 @@ func (r *Secret) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 			"type": schema.StringAttribute{
 				MarkdownDescription: "Type of the secret",
 				Optional:            true,
+				Computed:            true,
+			},
+			"retry": job.RetryModelSchema(),
+			"resource_version": schema.StringAttribute{
+				MarkdownDescription: "The resource version.",
+				Computed:            true,
+			},
+			"uid": schema.StringAttribute{
+				MarkdownDescription: "The unique identifier of the resource.",
+				Computed:            true,
+			},
+			"generation": schema.Int64Attribute{
+				MarkdownDescription: "The generation of the resource.",
+				Computed:            true,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -195,14 +206,19 @@ func (r *Secret) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 		return
 	}
 
-	stateResource, err := state.Manifest()
+	helper, err := r.newCrudHelper(nil)
+	if err != nil {
+		resp.Diagnostics.AddError("Initializing", err.Error())
+		return
+	}
+
+	helper.State, err = state.Manifest()
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to read resource tfstate", err.Error())
 		return
 	}
-	key := kresource.GetKey(stateResource)
-	actualUnstructured, err := r.provider.Shared.Get(ctx, key)
 
+	changed, err := helper.ReadActual(ctx, &state.OutputMetadata)
 	if err != nil {
 		if kresource.ErrorIsNotFound(err) {
 			//ok so we have to update the state to say it is stale
@@ -210,22 +226,40 @@ func (r *Secret) Read(ctx context.Context, req resource.ReadRequest, resp *resou
 		} else {
 			resp.Diagnostics.AddError("Failed to fetch resource", err.Error())
 		}
-	} else {
-		//compare state with current
-		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
-		for _, diff := range diffs {
-			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
-		}
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
-			return
-		} else {
-			_, err := kresource.FormatYaml(actualUnstructured)
-			if err != nil {
-				resp.Diagnostics.AddError("Failed to format actual", err.Error())
-				return
-			}
-		}
+		return
+	}
+
+	if changed {
+		// key := kresource.GetKey(stateResource)
+		// actualUnstructured, err := r.provider.Shared.Get(ctx, key)
+		//
+		//	if err != nil {
+		//		if kresource.ErrorIsNotFound(err) {
+		//			//ok so we have to update the state to say it is stale
+		//			resp.State.RemoveResource(ctx)
+		//		} else {
+		//			resp.Diagnostics.AddError("Failed to fetch resource", err.Error())
+		//		}
+		//	} else {
+		//
+		//		//compare state with current
+		//		diffs, err := kresource.DiffResources(stateResource.Object, actualUnstructured.Object)
+		//		for _, diff := range diffs {
+		//			resp.Diagnostics.AddWarning(fmt.Sprintf("Read.Diff: %s", diff), "")
+		//		}
+		//		if err != nil {
+		//			resp.Diagnostics.AddError("Failed to diff state and actual", err.Error())
+		//			return
+		//		} else {
+		//			s, err := kresource.FormatYaml(actualUnstructured)
+		//			if err != nil {
+		//				resp.Diagnostics.AddError("Failed to format actual", err.Error())
+		//				return
+		//			}
+		//			_ = s
+		//		}
+		//	}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 	}
 }
 

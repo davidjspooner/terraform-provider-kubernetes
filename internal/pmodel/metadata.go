@@ -59,3 +59,9 @@ func LongMetadataSchemaBlock() schema.SingleNestedBlock {
 	}
 	return s
 }
+
+type OutputMetadata struct {
+	ResourceVersion types.String `tfsdk:"resource_version"`
+	UID             types.String `tfsdk:"uid"`
+	Generation      types.Int64  `tfsdk:"generation"`
+}

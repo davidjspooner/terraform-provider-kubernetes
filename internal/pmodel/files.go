@@ -149,7 +149,7 @@ func (sm *StringMap) GetBase64(key string) (string, error) {
 	return value, nil
 }
 
-func (sm *StringMap) AddMaps(data, b64data types.Map) error {
+func (sm *StringMap) AddMaps(data, binaryData types.Map) error {
 	var elements map[string]string
 
 	diags := data.ElementsAs(context.Background(), &elements, false)
@@ -165,7 +165,7 @@ func (sm *StringMap) AddMaps(data, b64data types.Map) error {
 			return err
 		}
 	}
-	diags = b64data.ElementsAs(context.Background(), &elements, false)
+	diags = binaryData.ElementsAs(context.Background(), &elements, false)
 	if diags.HasError() {
 		return fmt.Errorf("error getting data map")
 	}
@@ -285,4 +285,16 @@ func (sm *StringMap) GetUnstructured() map[string]string {
 		copy[k] = v
 	}
 	return copy
+}
+
+func (sm *StringMap) ForEach(ctx context.Context, fn func(key, value string) error) error {
+	if sm == nil || len(sm.data) == 0 {
+		return nil
+	}
+	for k, v := range sm.data {
+		if err := fn(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
