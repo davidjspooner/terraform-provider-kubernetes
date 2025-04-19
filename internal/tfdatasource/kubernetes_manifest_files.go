@@ -1,7 +1,7 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package provider
+package tfdatasource
 
 import (
 	"bufio"
@@ -12,6 +12,8 @@ import (
 	"io"
 	"strings"
 	"text/template"
+
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -25,27 +27,36 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ datasource.DataSource = &FileManifests{}
 
-func NewFileManifests() datasource.DataSource {
-	r := &FileManifests{
-		prometheusTypeNameSuffix: "_manifest_files",
-	}
-	return r
+func init() {
+	// Register the data source with the provider.
+	tfprovider.RegisterDataSource(func() datasource.DataSource {
+		return &FileManifests{
+			tfTypeNameSuffix: "_manifest_files",
+		}
+	})
 }
 
 // FileManifests defines the resource implementation.
 type FileManifests struct {
-	provider                 *KubernetesProvider
-	prometheusTypeNameSuffix string
+	provider         *tfprovider.KubernetesResourceProvider
+	tfTypeNameSuffix string
 }
 
-// FileManifestsModel describes the resource data model.
+var ManifestType = map[string]attr.Type{
+	"kind":     types.StringType,
+	"name":     types.StringType,
+	"manifest": types.StringType,
+	"source":   types.StringType,
+}
+
+// FileManifestsModel describes the resource data tfshared.
 type FileManifestsModel struct {
-	FileNames FilesModel `tfsdk:"file_data"`
-	Manifests types.Map  `tfsdk:"manifests"`
+	FileNames tfprovider.FilesModel `tfsdk:"file_data"`
+	Manifests types.Map             `tfsdk:"manifests"`
 }
 
 func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
+	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
 func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -54,8 +65,31 @@ func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest
 		MarkdownDescription: "Read yaml from a list of files and return all the inner manifests",
 
 		Attributes: map[string]schema.Attribute{
-			"file_data": FileListSchema(true),
-			"manifests": ManifestMapSchema(),
+			"file_data": tfprovider.DefineFileListSchema(true),
+			"manifests": schema.MapNestedAttribute{
+				MarkdownDescription: "A Kubernetes manifest. This resource manages the lifecycle of a Kubernetes manifest.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"kind": schema.StringAttribute{
+							MarkdownDescription: "The extracted kind of the resource .",
+							Computed:            true,
+						},
+						"name": schema.StringAttribute{
+							MarkdownDescription: "The extracted name of the resource manifest.",
+							Computed:            true,
+						},
+						"manifest": schema.StringAttribute{
+							MarkdownDescription: "The entire manifest ( as yaml text ) of the resource.",
+							Computed:            true,
+						},
+						"source": schema.StringAttribute{
+							MarkdownDescription: "The source of the resource manifest.",
+							Computed:            true,
+						},
+					},
+				},
+				Computed: true,
+			},
 		},
 	}
 }
@@ -67,7 +101,7 @@ func (r *FileManifests) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 
 	var ok bool
-	r.provider, ok = req.ProviderData.(*KubernetesProvider)
+	r.provider, ok = req.ProviderData.(*tfprovider.KubernetesResourceProvider)
 
 	if !ok {
 		resp.Diagnostics.AddError(
@@ -133,7 +167,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
-	sm := StringMap{}
+	sm := tfprovider.StringMap{}
 	sm.AddFileModel(&config.FileNames)
 
 	var values map[string]string
@@ -161,7 +195,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 			manifests := r.readManifestsFromReader(ctx, sr, &config)
 			for _, manifestWithLineNumber := range manifests {
 
-				manifest, err := ReadManifest(manifestWithLineNumber.manifest)
+				manifest, err := tfprovider.ReadManifest(manifestWithLineNumber.manifest)
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
 						resp.Diagnostics.AddError(

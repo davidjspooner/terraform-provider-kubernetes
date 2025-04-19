@@ -1,7 +1,7 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package provider
+package tfresource
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -17,44 +18,47 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &KubernetesGet{}
+var _ resource.Resource = &KubernetesWatch{}
 
-func NewResourceGet() resource.Resource {
-	r := &KubernetesGet{
-		prometheusTypeNameSuffix: "_get",
-	}
-	return r
+func init() {
+	// Register the resource with the provider.
+	tfprovider.RegisterResource(func() resource.Resource {
+		r := &KubernetesWatch{
+			tfTypeNameSuffix: "_watch",
+		}
+		return r
+	})
 }
 
-// KubernetesGet defines the resource implementation.
-type KubernetesGet struct {
-	provider                 *KubernetesProvider
-	prometheusTypeNameSuffix string
+// KubernetesWatch defines the resource implementation.
+type KubernetesWatch struct {
+	provider         *tfprovider.KubernetesResourceProvider
+	tfTypeNameSuffix string
 }
 
-// GetResourceModel describes the resource data model.
-type GetResourceModel struct {
-	ApiVersion types.String   `tfsdk:"api_version"`
-	Kind       types.String   `tfsdk:"kind"`
-	Metadata   *ShortMetadata `tfsdk:"metadata"`
+// WatchModel describes the resource data model.
+type WatchModel struct {
+	ApiVersion types.String              `tfsdk:"api_version"`
+	Kind       types.String              `tfsdk:"kind"`
+	Metadata   *tfprovider.ShortMetadata `tfsdk:"metadata"`
 
-	Querry QuerryList `tfsdk:"querry"`
+	Querry tfprovider.QuerryList `tfsdk:"querry"`
 
 	Captured types.Map `tfsdk:"captured"`
 
 	State       types.String `tfsdk:"state"`
 	LastChecked types.String `tfsdk:"last_checked"`
 
-	Retry *job.RetryModel `tfsdk:"retry"`
+	ApiOptions *tfprovider.APIOptions `tfsdk:"api_options"`
 
-	OutputMetadata
+	tfprovider.OutputMetadata
 }
 
-func (r *KubernetesGet) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
+func (r *KubernetesWatch) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
-func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *KubernetesWatch) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Wait until a resource attribute matches a regex",
@@ -79,8 +83,8 @@ func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, 
 				MarkdownDescription: "API version of the object",
 				Required:            true,
 			},
-			"retry":  job.RetryModelSchema(),
-			"querry": QuerrySchemaList(true),
+			"retry":  job.DefineRetryModelSchema(),
+			"querry": tfprovider.QuerrySchemaList(true),
 			"captured": schema.MapAttribute{
 				MarkdownDescription: "Captured data",
 				ElementType:         types.StringType,
@@ -100,19 +104,19 @@ func (r *KubernetesGet) Schema(ctx context.Context, req resource.SchemaRequest, 
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"metadata": ShortMetadataSchemaBlock(),
+			"metadata": tfprovider.ShortMetadataSchemaBlock(),
 		},
 	}
 }
 
-func (r *KubernetesGet) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *KubernetesWatch) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
 
 	var ok bool
-	r.provider, ok = req.ProviderData.(*KubernetesProvider)
+	r.provider, ok = req.ProviderData.(*tfprovider.KubernetesResourceProvider)
 
 	if !ok {
 		resp.Diagnostics.AddError(
@@ -124,11 +128,15 @@ func (r *KubernetesGet) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 }
 
-func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, data *GetResourceModel) (*CaptureMap, error) {
+func (r *KubernetesWatch) checvaluesOnce(ctx context.Context, key *kresource.Key, data *WatchModel) (*tfprovider.CaptureMap, error) {
 
-	var captureMap CaptureMap
-	var err error
-	unstructured, err := r.provider.Shared.Get(ctx, key)
+	apiOptions, err := tfprovider.MergeKubenetesAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	var captureMap tfprovider.CaptureMap
+	unstructured, err := r.provider.Shared.Get(ctx, key, apiOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -144,9 +152,9 @@ func (r *KubernetesGet) checvaluesOnce(ctx context.Context, key *kresource.Key, 
 	return &captureMap, nil
 }
 
-func (r *KubernetesGet) checkValuesWithRetry(ctx context.Context, key *kresource.Key, data *GetResourceModel, diags *diag.Diagnostics) {
+func (r *KubernetesWatch) checkValuesWithRetry(ctx context.Context, key *kresource.Key, data *WatchModel, diags *diag.Diagnostics) {
 
-	var savedCaptureMap *CaptureMap
+	var savedCaptureMap *tfprovider.CaptureMap
 
 	err := r.retry(ctx, data, func(ctx context.Context, attempt int) error {
 		var innerErr error
@@ -168,8 +176,8 @@ func (r *KubernetesGet) checkValuesWithRetry(ctx context.Context, key *kresource
 	data.LastChecked = types.StringValue(time.Now().Format(time.RFC3339Nano))
 }
 
-func (r *KubernetesGet) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data GetResourceModel
+func (r *KubernetesWatch) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data WatchModel
 
 	// Read Terraform plan data into the model
 	diags := req.Plan.Get(ctx, &data)
@@ -200,8 +208,8 @@ func (r *KubernetesGet) Create(ctx context.Context, req resource.CreateRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *KubernetesGet) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state GetResourceModel
+func (r *KubernetesWatch) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state WatchModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -240,8 +248,8 @@ func (r *KubernetesGet) Read(ctx context.Context, req resource.ReadRequest, resp
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *KubernetesGet) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data GetResourceModel
+func (r *KubernetesWatch) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data WatchModel
 
 	// Read Terraform plan data into the model
 	diags := req.Plan.Get(ctx, &data)
@@ -272,11 +280,11 @@ func (r *KubernetesGet) Update(ctx context.Context, req resource.UpdateRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *KubernetesGet) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *KubernetesWatch) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 
 	//effectily a no-op - we just reset the output vars
 
-	var data GetResourceModel
+	var data WatchModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 	var subDiags diag.Diagnostics
@@ -290,8 +298,12 @@ func (r *KubernetesGet) Delete(ctx context.Context, req resource.DeleteRequest, 
 	resp.State.Set(ctx, &data)
 }
 
-func (r *KubernetesGet) retry(ctx context.Context, data *GetResourceModel, task func(context.Context, int) error) error {
-	defaultHelper, err := data.Retry.NewHelper(nil)
+func (r *KubernetesWatch) retry(ctx context.Context, data *WatchModel, task func(context.Context, int) error) error {
+	apiOptions, err := tfprovider.MergeKubenetesAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions)
+	if err != nil {
+		return err
+	}
+	defaultHelper, err := apiOptions.Retry.NewHelper()
 	if err != nil {
 		return err
 	}

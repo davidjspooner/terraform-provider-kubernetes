@@ -1,13 +1,13 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package provider
+package tfresource
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -19,16 +19,19 @@ import (
 var _ resource.Resource = &Config{}
 var _ resource.ResourceWithImportState = &Config{}
 
-func NewKubeCtlConfig() resource.Resource {
-	return &Config{
-		prometheusTypeNameSuffix: "_kubectl_config",
-	}
+func init() {
+	// Register the resource with the provider.
+	tfprovider.RegisterResource(func() resource.Resource {
+		return &Config{
+			tfTypeNameSuffix: "_kubectl_config",
+		}
+	})
 }
 
 // Config defines the resource implementation.
 type Config struct {
-	provider                 *KubernetesProvider
-	prometheusTypeNameSuffix string
+	provider         *tfprovider.KubernetesResourceProvider
+	tfTypeNameSuffix string
 }
 
 // ConfigModel describes the resource data model.
@@ -40,7 +43,7 @@ type ConfigModel struct {
 }
 
 func (r *Config) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.prometheusTypeNameSuffix
+	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
 func (r *Config) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -76,7 +79,7 @@ func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, r
 	}
 
 	var ok bool
-	r.provider, ok = req.ProviderData.(*KubernetesProvider)
+	r.provider, ok = req.ProviderData.(*tfprovider.KubernetesResourceProvider)
 
 	if !ok {
 		resp.Diagnostics.AddError(
@@ -89,7 +92,7 @@ func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, r
 }
 
 func (r *Config) createOrUpdate(ctx context.Context, data *ConfigModel) error {
-	pair := kresource.K8sConfigPair{}
+	pair := tfprovider.K8sConfigPair{}
 	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()
 	pair.LoadConfigs(source_filename, target_filename)
@@ -174,7 +177,7 @@ func (r *Config) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	pair := kresource.K8sConfigPair{}
+	pair := tfprovider.K8sConfigPair{}
 
 	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()

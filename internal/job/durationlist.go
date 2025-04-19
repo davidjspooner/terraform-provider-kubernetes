@@ -1,6 +1,7 @@
 package job
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -8,6 +9,10 @@ import (
 type DurationList []time.Duration
 
 func ParseDurationList(s string) (DurationList, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, fmt.Errorf("duration list cannot be empty or whitespace")
+	}
+
 	parts := strings.FieldsFunc(s, func(r rune) bool {
 		return r == ',' || r == ' '
 	})
@@ -15,7 +20,7 @@ func ParseDurationList(s string) (DurationList, error) {
 	for i, part := range parts {
 		duration, err := time.ParseDuration(part)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid duration %q: %v", part, err)
 		}
 		list[i] = duration
 	}

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"golang.org/x/exp/constraints"
 )
 
 func FirstNonNullString(args ...string) string {
@@ -48,26 +46,27 @@ func ExpandEnv(path string) (string, error) {
 	return betterPath, nil
 }
 
-func ErrorIsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	for _, match := range []string{"not found", "no matches for kind", "not found:", "not found (get)"} {
-		if strings.Contains(errStr, match) {
-			return true
-		}
-	}
-	return false
-}
-
-func FirstNonEmpty[E constraints.Ordered](values ...E) E {
-	var null E
-	for _, v := range values {
-		if v != null {
-			return v
-		}
-
-	}
-	return values[len(values)-1]
-}
+//func ErrorIsNotFound(err error) bool {
+//	if err == nil {
+//		return false
+//	}
+//	errStr := err.Error()
+//	for _, match := range []string{"not found", "no matches for kind", "not found:", "not found (get)"} {
+//		if strings.Contains(errStr, match) {
+//			return true
+//		}
+//	}
+//	return false
+//}
+//
+//func FirstNonEmpty[E constraints.Ordered](values ...E) E {
+//	var null E
+//	for _, v := range values {
+//		if v != null {
+//			return v
+//		}
+//
+//	}
+//	return values[len(values)-1]
+//}
+//

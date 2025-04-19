@@ -1,4 +1,4 @@
-package provider
+package tfprovider
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 type QuerryModel struct {
 	Select  types.String `tfsdk:"select"`
-	Match   types.String `tfsdk:"match"`
+	Match   types.String `tfsdk:"until_match"`
 	Capture types.String `tfsdk:"capture"`
 
 	path   vpath.Path
@@ -23,16 +23,16 @@ func QuerrySchemaList(required bool) schema.ListNestedAttribute {
 
 		NestedObject: schema.NestedAttributeObject{
 			Attributes: map[string]schema.Attribute{
-				"capture": schema.StringAttribute{
-					MarkdownDescription: "named value in output",
-					Optional:            true,
-				},
 				"select": schema.StringAttribute{
 					MarkdownDescription: "field to check in resource",
 					Optional:            true,
 				},
-				"match": schema.StringAttribute{
+				"until_match": schema.StringAttribute{
 					MarkdownDescription: "regex to match",
+					Optional:            true,
+				},
+				"capture": schema.StringAttribute{
+					MarkdownDescription: "named value in output",
 					Optional:            true,
 				},
 			},

@@ -1,4 +1,4 @@
-package provider
+package tfprovider
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ type FilesModel struct {
 	Values       types.Map    `tfsdk:"values"`
 }
 
-func FileListSchema(required bool) schema.Attribute {
+func DefineFileListSchema(required bool) schema.Attribute {
 	result := schema.SingleNestedAttribute{
 		Attributes: map[string]schema.Attribute{
 			"paths": schema.ListAttribute{

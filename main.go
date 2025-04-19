@@ -10,7 +10,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/provider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
@@ -56,7 +56,7 @@ func main() {
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), provider.New(Version), opts)
+	err := providerserver.Serve(context.Background(), tfprovider.NewProvider(Version), opts)
 
 	if err != nil {
 		log.Fatal(err.Error())

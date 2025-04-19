@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func SameErrorMessages(err1, err2 error) bool {
+func ErrorMessagesAreEqual(err1, err2 error) bool {
 	var msg1, msg2 string
 	if err1 != nil {
 		msg1 = err1.Error()
@@ -18,20 +18,20 @@ func SameErrorMessages(err1, err2 error) bool {
 	return msg1 == msg2
 }
 
-func PtrTo[T any](v T) *T {
+func PointerTo[T any](v T) *T {
 	return &v
 }
 
 func TestRetryHelper(t *testing.T) {
 	retrySchema := RetryModel{
-		MaxAttempts: PtrTo[int64](3),
-		FastFail:    PtrTo([]string{"abort"}),
-		Pause:       PtrTo("2s"),
-		Interval:    PtrTo("1s,2s,3s"),
-		Timeout:     PtrTo("6s"),
+		MaxAttempts:  PointerTo[int64](3),
+		FastFail:     PointerTo([]string{"abort"}),
+		InitialPause: PointerTo("2s"),
+		Interval:     PointerTo("1s,2s,3s"),
+		Timeout:      PointerTo("6s"),
 	}
 
-	retryHelper, err := retrySchema.NewHelper(nil)
+	retryHelper, err := retrySchema.NewHelper()
 	if err != nil {
 		t.Fatalf("RetrySchema.NewHelper() = [%v], expected [nil]", err)
 	}
@@ -90,7 +90,7 @@ func TestRetryHelper(t *testing.T) {
 		ctx, cancel := retryHelper.SetDeadline(ctx)
 		defer cancel()
 		err := retryHelper.Retry(ctx, tc.fn)
-		if !SameErrorMessages(err, tc.expectedError) {
+		if !ErrorMessagesAreEqual(err, tc.expectedError) {
 			t.Errorf("Test #%d : RetryHelper.Retry() = [%v], expected [%s]", testNumber+1, err, tc.expectedError)
 		}
 	}

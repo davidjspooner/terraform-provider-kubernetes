@@ -1,4 +1,4 @@
-package kresource
+package tfprovider
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"gopkg.in/yaml.v3"
 )
 
@@ -109,7 +110,7 @@ func (config *Config) FindUser(name string) int {
 
 func (config *Config) WriteToFile(filename string) error {
 
-	filename, err := ExpandEnv(filename)
+	filename, err := kresource.ExpandEnv(filename)
 	if err != nil {
 		return fmt.Errorf("error expanding template filename: %w", err)
 	}
@@ -167,7 +168,7 @@ type K8sConfigPair struct {
 
 func (pair *K8sConfigPair) LoadConfigs(templateFilename string, targetFilename string) error {
 
-	templateFilename, err := ExpandEnv(templateFilename)
+	templateFilename, err := kresource.ExpandEnv(templateFilename)
 	if err != nil {
 		return fmt.Errorf("error expanding template filename: %w", err)
 	}
@@ -182,7 +183,7 @@ func (pair *K8sConfigPair) LoadConfigs(templateFilename string, targetFilename s
 		//}
 	}
 
-	targetFilename, err = ExpandEnv(targetFilename)
+	targetFilename, err = kresource.ExpandEnv(targetFilename)
 	if err != nil {
 		return fmt.Errorf("error expanding target filename: %w", err)
 	}

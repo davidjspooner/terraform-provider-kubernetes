@@ -38,11 +38,26 @@ func TestParseList(t *testing.T) {
 			expected: nil,
 			err:      fmt.Errorf("time: invalid duration \"garbage\""),
 		},
+		{
+			input:    "",
+			expected: nil,
+			err:      fmt.Errorf("duration list cannot be empty or whitespace"),
+		},
+		{
+			input:    "   ",
+			expected: nil,
+			err:      fmt.Errorf("duration list cannot be empty or whitespace"),
+		},
+		{
+			input:    "1s,invalid,2s",
+			expected: nil,
+			err:      fmt.Errorf("invalid duration \"invalid\": time: invalid duration \"invalid\""),
+		},
 	}
 
 	for _, tc := range testCases {
 		result, err := ParseDurationList(tc.input)
-		if !reflect.DeepEqual(result, tc.expected) || !SameErrorMessages(err, tc.err) {
+		if !reflect.DeepEqual(result, tc.expected) || !ErrorMessagesAreEqual(err, tc.err) {
 			t.Errorf("ParseList(%s) = %s, %v, expected %s, %v", tc.input, result, err, tc.expected, tc.err)
 		}
 	}

@@ -3,6 +3,8 @@ package kresource
 import (
 	"fmt"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type MetaData struct {
@@ -10,6 +12,18 @@ type MetaData struct {
 	Namespace   *string           `yaml:"namespace,omitempty" tfsdk:"namespace"`
 	Labels      map[string]string `yaml:"labels,omitempty" tfsdk:"labels"`
 	Annotations map[string]string `yaml:"annotations,omitempty" tfsdk:"annotations"`
+}
+
+func (m *MetaData) FromManifest(manifest *unstructured.Unstructured) {
+	m.Name = manifest.GetName()
+	s, _, _ := unstructured.NestedString(manifest.Object, "metadata", "namespace")
+	if s != "" {
+		m.Namespace = &s
+	} else {
+		m.Namespace = nil
+	}
+	m.Labels = manifest.GetLabels()
+	m.Annotations = manifest.GetAnnotations()
 }
 
 type Key struct {
@@ -54,4 +68,16 @@ func CompareKeys(a, b *Key) int {
 	}
 
 	return 0
+}
+func GetKey(r unstructured.Unstructured) *Key {
+	if r.Object == nil {
+		return nil
+	}
+	k := Key{}
+	k.ApiVersion = r.GetAPIVersion()
+	k.Kind = r.GetKind()
+	k.MetaData.Name = r.GetName()
+	namespace := r.GetNamespace()
+	k.MetaData.Namespace = &namespace
+	return &k
 }

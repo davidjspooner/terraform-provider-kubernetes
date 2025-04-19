@@ -11,23 +11,46 @@ import (
 )
 
 type RetryModel struct {
-	MaxAttempts *int64    `tfsdk:"attempts"`
-	FastFail    *[]string `tfsdk:"fast_fail"`
-	Pause       *string   `tfsdk:"pause"`
-	Interval    *string   `tfsdk:"interval"`
-	Timeout     *string   `tfsdk:"timeout"`
+	MaxAttempts  *int64    `tfsdk:"attempts"`
+	FastFail     *[]string `tfsdk:"fast_fail"`
+	InitialPause *string   `tfsdk:"initial_pause"`
+	Interval     *string   `tfsdk:"interval"`
+	Timeout      *string   `tfsdk:"timeout"`
 }
 
-func (rs *RetryModel) NewHelper(defaults *RetryHelper) (*RetryHelper, error) {
+func MergeRetryModels(models ...*RetryModel) (*RetryModel, error) {
+	merged := &RetryModel{}
+	for _, model := range models {
+		if model == nil {
+			continue
+		}
+		if model.MaxAttempts != nil {
+			merged.MaxAttempts = model.MaxAttempts
+		}
+		if model.FastFail != nil {
+			merged.FastFail = model.FastFail
+		}
+		if model.InitialPause != nil {
+			merged.InitialPause = model.InitialPause
+		}
+		if model.Interval != nil {
+			merged.Interval = model.Interval
+		}
+		if model.Timeout != nil {
+			merged.Timeout = model.Timeout
+		}
+	}
+
+	return merged, nil
+}
+
+func (rs *RetryModel) NewHelper() (*RetryHelper, error) {
 
 	if rs == nil {
 		rs = &RetryModel{}
 	}
 
 	var rh RetryHelper
-	if defaults != nil {
-		rh = *defaults
-	}
 
 	if rs.MaxAttempts != nil && *rs.MaxAttempts > 0 {
 		rh.MaxAttempts = int(*rs.MaxAttempts)
@@ -47,8 +70,8 @@ func (rs *RetryModel) NewHelper(defaults *RetryHelper) (*RetryHelper, error) {
 	var err error
 
 	//parse pause ( default is no pause )
-	if rs.Pause != nil {
-		pauseStr := strings.TrimSpace(*rs.Pause)
+	if rs.InitialPause != nil {
+		pauseStr := strings.TrimSpace(*rs.InitialPause)
 		if pauseStr != "" {
 			rh.Pause, err = time.ParseDuration(pauseStr)
 			if err != nil {
@@ -78,8 +101,9 @@ func (rs *RetryModel) NewHelper(defaults *RetryHelper) (*RetryHelper, error) {
 	return &rh, nil
 }
 
-func RetryModelSchema() schema.SingleNestedAttribute {
+func DefineRetryModelSchema() schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
+		Description: "Retry options when modifying resource.",
 		Attributes: map[string]schema.Attribute{
 			"attempts": schema.NumberAttribute{
 				MarkdownDescription: "maximum number of attempts",
@@ -90,7 +114,7 @@ func RetryModelSchema() schema.SingleNestedAttribute {
 				MarkdownDescription: "regex patterns to search errors and if found, fast fail withoug further attempts",
 				Optional:            true,
 			},
-			"pause": schema.StringAttribute{
+			"initial_pause": schema.StringAttribute{
 				MarkdownDescription: "pause before first attempt",
 				Optional:            true,
 			},
