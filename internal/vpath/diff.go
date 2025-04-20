@@ -1,4 +1,4 @@
-package kresource
+package vpath
 
 import (
 	"errors"
@@ -28,33 +28,31 @@ func FindDifferences(prefix string, left, right interface{}, handler DifferenceH
 
 var reflectType = reflect.TypeOf((*reflect.Value)(nil)).Elem()
 
+func getElemValue(v reflect.Value) reflect.Value {
+	for {
+		kind := v.Kind()
+		if (kind == reflect.Ptr || kind == reflect.Interface) && !v.IsNil() {
+			v = v.Elem()
+		} else if v.Type() == reflectType {
+			v = v.Elem()
+		} else {
+			return v
+		}
+	}
+}
+
 func compareReflect(path string, left, right reflect.Value, handler DifferenceHandler) error {
 
 	var err error
 
-	// Dereference pointers
+	left = getElemValue(left)
+	right = getElemValue(right)
 
-	for {
-		if left.Kind() == reflect.Ptr && !left.IsNil() {
-			left = left.Elem()
-		} else if left.Type() == reflectType {
-			left = left.Elem()
-		} else {
-			break
-		}
-	}
-	for {
-		if right.Kind() == reflect.Ptr && !right.IsNil() {
-			right = right.Elem()
-		} else if right.Type() == reflectType {
-			right = right.Elem()
-		} else {
-			break
-		}
-	}
+	lKind := left.Kind()
+	rKind := right.Kind()
 
 	// Check if kinds differ
-	if left.Kind() != right.Kind() {
+	if lKind != rKind {
 		err = handler.HandleDifference(path, safeInterface(left), safeInterface(right))
 		if err != nil {
 			return err
@@ -62,7 +60,7 @@ func compareReflect(path string, left, right reflect.Value, handler DifferenceHa
 		return nil
 	}
 
-	switch left.Kind() {
+	switch lKind {
 	case reflect.Struct:
 		for i := 0; i < left.NumField(); i++ {
 			fieldName := left.Type().Field(i).Name

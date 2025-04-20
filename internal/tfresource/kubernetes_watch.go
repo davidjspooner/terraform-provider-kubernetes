@@ -128,7 +128,7 @@ func (r *KubernetesWatch) Configure(ctx context.Context, req resource.ConfigureR
 	}
 }
 
-func (r *KubernetesWatch) checvaluesOnce(ctx context.Context, key *kresource.Key, data *WatchModel) (*tfprovider.CaptureMap, error) {
+func (r *KubernetesWatch) checvaluesOnce(ctx context.Context, key *kresource.ResourceKey, data *WatchModel) (*tfprovider.CaptureMap, error) {
 
 	apiOptions, err := kresource.MergeAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions.Options())
 	if err != nil {
@@ -152,7 +152,7 @@ func (r *KubernetesWatch) checvaluesOnce(ctx context.Context, key *kresource.Key
 	return &captureMap, nil
 }
 
-func (r *KubernetesWatch) checkValuesWithRetry(ctx context.Context, key *kresource.Key, data *WatchModel, diags *diag.Diagnostics) {
+func (r *KubernetesWatch) checkValuesWithRetry(ctx context.Context, key *kresource.ResourceKey, data *WatchModel, diags *diag.Diagnostics) {
 
 	var savedCaptureMap *tfprovider.CaptureMap
 
@@ -193,10 +193,10 @@ func (r *KubernetesWatch) Create(ctx context.Context, req resource.CreateRequest
 		namespace = data.Metadata.Namespace.ValueString()
 	}
 
-	key := kresource.Key{
+	key := kresource.ResourceKey{
 		Kind:       data.Kind.ValueString(),
 		ApiVersion: data.ApiVersion.ValueString(),
-		MetaData: kresource.MetaData{
+		MetaData: kresource.ResourceMetaData{
 			Namespace: &namespace,
 			Name:      data.Metadata.Name.ValueString(),
 		},
@@ -225,10 +225,10 @@ func (r *KubernetesWatch) Read(ctx context.Context, req resource.ReadRequest, re
 		namespace = state.Metadata.Namespace.ValueString()
 	}
 
-	key := kresource.Key{
+	key := kresource.ResourceKey{
 		Kind:       state.Kind.ValueString(),
 		ApiVersion: state.ApiVersion.ValueString(),
-		MetaData: kresource.MetaData{
+		MetaData: kresource.ResourceMetaData{
 			Namespace: &namespace,
 			Name:      state.Metadata.Name.ValueString(),
 		},
@@ -265,10 +265,10 @@ func (r *KubernetesWatch) Update(ctx context.Context, req resource.UpdateRequest
 	} else {
 		namespace = data.Metadata.Namespace.ValueString()
 	}
-	key := kresource.Key{
+	key := kresource.ResourceKey{
 		Kind:       data.Kind.ValueString(),
 		ApiVersion: data.ApiVersion.ValueString(),
-		MetaData: kresource.MetaData{
+		MetaData: kresource.ResourceMetaData{
 			Name:      data.Metadata.Name.ValueString(),
 			Namespace: &namespace,
 		},

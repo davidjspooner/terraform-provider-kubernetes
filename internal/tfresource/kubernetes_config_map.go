@@ -5,14 +5,18 @@ package tfresource
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -36,26 +40,24 @@ type KubernetesConfigMap struct {
 
 // ConfigMapModel describes the resource data model.
 type ConfigMapModel struct {
-	MetaData        kresource.MetaData          `tfsdk:"metadata"`
-	Immutable       types.Bool                  `tfsdk:"immutable"`
-	Filenames       *tfprovider.FilesModel      `tfsdk:"file_data"`
-	BinaryFilenames *tfprovider.FilesModel      `tfsdk:"binary_file_data"`
-	Data            types.Map                   `tfsdk:"data"`
-	BinaryData      types.Map                   `tfsdk:"binary_data"`
-	ApiOptions      *tfprovider.APIOptionsModel `tfsdk:"api_options"`
+	MetaData   kresource.ResourceMetaData  `tfsdk:"metadata"`
+	Immutable  types.Bool                  `tfsdk:"immutable"`
+	Files      *tfprovider.FilesModel      `tfsdk:"file_data"`
+	Data       types.Map                   `tfsdk:"data"`
+	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
+	Hashes     types.Map                   `tfsdk:"hashes"`
 
 	tfprovider.OutputMetadata
+	values kresource.StringMap
 }
 
-func (dmm *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) error {
-	sm := &kresource.StringMap{}
-	sm.SetBase64Encoded(false)
+func (model *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) error {
 
-	err := dmm.Filenames.AddToStringMap(sm)
+	err := model.Files.AddToStringMap(&model.values)
 	if err != nil {
 		return err
 	}
-	err = sm.AddMaps(dmm.Data, dmm.BinaryData)
+	err = tfprovider.AddMapsToStringMap(&model.values, &model.Data, nil)
 	if err != nil {
 		return err
 	}
@@ -64,36 +66,69 @@ func (dmm *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) er
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
 		"metadata": map[string]interface{}{
-			"name":        dmm.MetaData.Name,
-			"labels":      dmm.MetaData.Labels,
-			"annotations": dmm.MetaData.Annotations,
+			"name":        model.MetaData.Name,
+			"labels":      model.MetaData.Labels,
+			"annotations": model.MetaData.Annotations,
 		},
-		"data": sm.GetUnstructured(),
+		"data": model.values.GetUnstructuredText(),
 	})
-	if dmm.MetaData.Namespace != nil {
-		manifest.SetNamespace(*dmm.MetaData.Namespace)
+	if model.MetaData.Namespace != nil {
+		manifest.SetNamespace(*model.MetaData.Namespace)
 	}
-	immutable := dmm.Immutable.ValueBool()
+	immutable := model.Immutable.ValueBool()
 	if immutable {
 		manifest.Object["immutable"] = immutable
 	}
 	return nil
 }
-func (dmm *ConfigMapModel) FromManifest(manifest *unstructured.Unstructured) error {
-	//dmm.MetaData.SetFromActual(actual)
-	//b, _, _ := unstructured.NestedBool(actual.Object, "immutable")
-	//dmm.Immutable = basetypes.NewBoolValue(b)
-	dmm.OutputMetadata.FromManifest(manifest)
+
+func GetHashes(sm *kresource.StringMap) types.Map {
+	hashes := make(map[string]attr.Value)
+	if sm == nil {
+		return types.MapValueMust(types.StringType, hashes)
+	}
+	sm.ForEachTextContent(func(k, v string) error {
+		hash := md5.Sum([]byte(v))
+		s := hex.EncodeToString(hash[:])
+		hashes[k] = basetypes.NewStringValue(s)
+		return nil
+	})
+	sm.ForEachBase64Content(func(k, v string) error {
+		hash := md5.Sum([]byte(v))
+		s := hex.EncodeToString(hash[:])
+		hashes[k] = basetypes.NewStringValue(s)
+		return nil
+	})
+	return types.MapValueMust(types.StringType, hashes)
+}
+
+func (model *ConfigMapModel) FromManifest(manifest *unstructured.Unstructured) error {
+	model.OutputMetadata.FromManifest(manifest)
+	model.values.Clear()
+	if manifest.Object["data"] != nil {
+		for k, v := range manifest.Object["data"].(map[string]interface{}) {
+			s := v.(string)
+			model.values.AddText(k, s)
+		}
+	}
+	if manifest.Object["binaryData"] != nil {
+		for k, v := range manifest.Object["binaryData"].(map[string]interface{}) {
+			s := v.(string)
+			model.values.AddBase64(k, s)
+		}
+	}
+	model.Hashes = GetHashes(&model.values)
+
 	return nil
 }
-func (dmm *ConfigMapModel) GetApiOptions() *kresource.APIOptions {
-	return dmm.ApiOptions.Options()
+func (model *ConfigMapModel) GetApiOptions() *kresource.APIClientOptions {
+	return model.ApiOptions.Options()
 }
-func (dmm *ConfigMapModel) GetResouceKey() (kresource.Key, error) {
-	return kresource.Key{
+func (model *ConfigMapModel) GetResouceKey() (kresource.ResourceKey, error) {
+	return kresource.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "ConfigMap",
-		MetaData:   dmm.MetaData,
+		MetaData:   model.MetaData,
 	}, nil
 }
 
@@ -109,9 +144,8 @@ func (r *KubernetesConfigMap) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
-			"api_options":      tfprovider.ApiOptionsModelSchema(),
-			"file_data":        tfprovider.DefineFileListSchema(false),
-			"binary_file_data": tfprovider.DefineFileListSchema(false),
+			"api_options": tfprovider.ApiOptionsModelSchema(),
+			"file_data":   tfprovider.DefineFileListSchema(false),
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Data to store in the configmap",
 				ElementType:         types.StringType,
@@ -132,6 +166,11 @@ func (r *KubernetesConfigMap) Schema(ctx context.Context, req resource.SchemaReq
 			},
 			"generation": schema.Int64Attribute{
 				MarkdownDescription: "The generation of the resource.",
+				Computed:            true,
+			},
+			"hashes": schema.MapAttribute{
+				MarkdownDescription: "A map of hashes of the data in the secret",
+				ElementType:         types.StringType,
 				Computed:            true,
 			},
 		},
@@ -160,9 +199,8 @@ func (r *KubernetesConfigMap) Create(ctx context.Context, req resource.CreateReq
 }
 
 func (r *KubernetesConfigMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	plan := &ConfigMapModel{}
 	state := &ConfigMapModel{}
-	r.ResourceBase.Read(ctx, plan, state, req, resp)
+	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
 func (r *KubernetesConfigMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

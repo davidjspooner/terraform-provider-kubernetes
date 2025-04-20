@@ -179,7 +179,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 	allmanifests := make(map[string]attr.Value)
 
 	if !resp.Diagnostics.HasError() {
-		sm.ForEach(ctx, func(filename string, content string) error {
+		sm.ForEachTextContent(func(filename string, content string) error {
 			var err error
 			if len(values) > 0 {
 				content, err = r.expandTemplate(content, values)

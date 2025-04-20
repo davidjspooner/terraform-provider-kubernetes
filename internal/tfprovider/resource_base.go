@@ -42,23 +42,23 @@ func (h *ResourceBase[implType]) Create(ctx context.Context, plan implType, req 
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
-func (h *ResourceBase[implType]) Read(ctx context.Context, plan, state implType, req resource.ReadRequest, resp *resource.ReadResponse) {
-	resp.Diagnostics.Append(req.State.Get(ctx, plan)...)
+func (h *ResourceBase[implType]) Read(ctx context.Context, state implType, req resource.ReadRequest, resp *resource.ReadResponse) {
+	resp.Diagnostics.Append(req.State.Get(ctx, state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	options, err := kresource.MergeAPIOptions(h.Provider.DefaultApiOptions, plan.GetApiOptions())
+	options, err := kresource.MergeAPIOptions(h.Provider.DefaultApiOptions, state.GetApiOptions())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to merge API options", err.Error())
 		return
 	}
 	resourceBase := kresource.NewResourceHelper(&h.Provider.Shared, options)
-	err = resourceBase.Read(ctx, plan, state)
+	err = resourceBase.Read(ctx, state)
 	if err != nil {
 		resp.Diagnostics.AddError("Read failed", err.Error())
 		return
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
 func (h *ResourceBase[implType]) Update(ctx context.Context, plan implType, req resource.UpdateRequest, resp *resource.UpdateResponse) {

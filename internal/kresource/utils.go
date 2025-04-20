@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 )
 
 func FirstNonNullString(args ...string) string {
@@ -46,27 +49,14 @@ func ExpandEnv(path string) (string, error) {
 	return betterPath, nil
 }
 
-//func ErrorIsNotFound(err error) bool {
-//	if err == nil {
-//		return false
-//	}
-//	errStr := err.Error()
-//	for _, match := range []string{"not found", "no matches for kind", "not found:", "not found (get)"} {
-//		if strings.Contains(errStr, match) {
-//			return true
-//		}
-//	}
-//	return false
-//}
-//
-//func FirstNonEmpty[E constraints.Ordered](values ...E) E {
-//	var null E
-//	for _, v := range values {
-//		if v != null {
-//			return v
-//		}
-//
-//	}
-//	return values[len(values)-1]
-//}
-//
+func ParseSingleYamlManifest(content string) (unstructured.Unstructured, error) {
+	yamlData := []byte(content)
+	decoder := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
+
+	obj := unstructured.Unstructured{}
+	_, _, err := decoder.Decode(yamlData, nil, &obj)
+	if err != nil {
+		return unstructured.Unstructured{}, err
+	}
+	return obj, nil
+}

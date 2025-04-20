@@ -35,48 +35,50 @@ type KubernetesNamespace struct {
 
 // NamespaceModel describes the resource data model.
 type NamespaceModel struct {
-	MetaData kresource.MetaData `tfsdk:"metadata"`
+	MetaData kresource.ResourceMetaData `tfsdk:"metadata"`
 
 	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
 	tfprovider.OutputMetadata
 }
 
-func (nsm *NamespaceModel) BuildManifest(manifest *unstructured.Unstructured) error {
+func (model *NamespaceModel) BuildManifest(manifest *unstructured.Unstructured) error {
 	manifest.SetUnstructuredContent(map[string]interface{}{
 		"apiVersion": "v1",
 		"kind":       "Namespace",
 		"metadata": map[string]interface{}{
-			"name": nsm.MetaData.Name,
+			"name": model.MetaData.Name,
 		},
 	})
-	if nsm.MetaData.Namespace != nil {
-		manifest.SetNamespace(*nsm.MetaData.Namespace)
+	if model.MetaData.Namespace != nil {
+		manifest.SetNamespace(*model.MetaData.Namespace)
 	}
-	labels := nsm.MetaData.Labels
+	labels := model.MetaData.Labels
 	if labels != nil {
 		manifest.SetLabels(labels)
 	}
-	annotations := nsm.MetaData.Annotations
+	annotations := model.MetaData.Annotations
 	if annotations != nil {
 		manifest.SetAnnotations(annotations)
 	}
 
 	return nil
 }
-func (nsm *NamespaceModel) FromManifest(manifest *unstructured.Unstructured) error {
-	nsm.OutputMetadata.FromManifest(manifest)
-	nsm.MetaData.FromManifest(manifest)
+
+func (model *NamespaceModel) FromManifest(manifest *unstructured.Unstructured) error {
+	model.OutputMetadata.FromManifest(manifest)
+	model.MetaData.FromManifest(manifest)
 	return nil
 }
-func (nsm *NamespaceModel) GetApiOptions() *kresource.APIOptions {
-	return nsm.ApiOptions.Options()
+
+func (model *NamespaceModel) GetApiOptions() *kresource.APIClientOptions {
+	return model.ApiOptions.Options()
 }
 
-func (nsm *NamespaceModel) GetResouceKey() (kresource.Key, error) {
-	return kresource.Key{
+func (model *NamespaceModel) GetResouceKey() (kresource.ResourceKey, error) {
+	return kresource.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "Namespace",
-		MetaData:   nsm.MetaData,
+		MetaData:   model.MetaData,
 	}, nil
 }
 
@@ -127,9 +129,8 @@ func (r *KubernetesNamespace) Create(ctx context.Context, req resource.CreateReq
 }
 
 func (r *KubernetesNamespace) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	plan := &NamespaceModel{}
 	state := &NamespaceModel{}
-	r.ResourceBase.Read(ctx, plan, state, req, resp)
+	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
 func (r *KubernetesNamespace) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

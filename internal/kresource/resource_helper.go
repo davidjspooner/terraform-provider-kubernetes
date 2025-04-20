@@ -9,15 +9,15 @@ import (
 )
 
 type StateInteraface interface {
-	GetResouceKey() (Key, error)
+	GetResouceKey() (ResourceKey, error)
 	BuildManifest(manifest *unstructured.Unstructured) error
 	FromManifest(manifest *unstructured.Unstructured) error
-	GetApiOptions() *APIOptions
+	GetApiOptions() *APIClientOptions
 }
 
 type ResourceHelper struct {
-	Api     *SharedApi
-	Options *APIOptions
+	Api     *APIClientWrapper
+	Options *APIClientOptions
 }
 
 func (base *ResourceHelper) Create(ctx context.Context, plan StateInteraface) error {
@@ -74,7 +74,7 @@ func (base *ResourceHelper) trimMapElements(previousMap, currentMap map[string]s
 	}
 }
 
-func (base *ResourceHelper) Read(ctx context.Context, plan, state StateInteraface) error {
+func (base *ResourceHelper) Read(ctx context.Context, state StateInteraface) error {
 
 	retryHelper, err := base.Options.Retry.NewHelper()
 	if err != nil {
@@ -192,7 +192,7 @@ func (base *ResourceHelper) Delete(ctx context.Context, state StateInteraface) e
 	return nil
 }
 
-func NewResourceHelper(sharedApi *SharedApi, apiOptions *APIOptions) *ResourceHelper {
+func NewResourceHelper(sharedApi *APIClientWrapper, apiOptions *APIClientOptions) *ResourceHelper {
 	return &ResourceHelper{
 		Api:     sharedApi,
 		Options: apiOptions,

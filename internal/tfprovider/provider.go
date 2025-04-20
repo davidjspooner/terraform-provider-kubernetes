@@ -30,8 +30,8 @@ type KubernetesResourceProvider struct {
 
 	version string
 
-	Shared            kresource.SharedApi
-	DefaultApiOptions *kresource.APIOptions
+	Shared            kresource.APIClientWrapper
+	DefaultApiOptions *kresource.APIClientOptions
 }
 
 // KubernetesProviderModel describes the provider data model.

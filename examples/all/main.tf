@@ -23,9 +23,11 @@ resource "kubernetes_resource" "test_namespace" {
 
 resource "kubernetes_resource" "test_deployment" {
     depends_on = [kubernetes_resource.test_namespace]
-    retry = {
-        timeout = "3m"
-    }
+#    api_options = {
+#        retry = {
+#            timeout = "3m"
+#        }
+#    }
     manifest = <<__EOF__
         apiVersion: apps/v1
         kind: Deployment
@@ -33,7 +35,7 @@ resource "kubernetes_resource" "test_deployment" {
             name: test-deployment
             namespace: test5
         spec:
-            replicas: 1
+            replicas: 2
             selector:
                 matchLabels:
                     app: test3

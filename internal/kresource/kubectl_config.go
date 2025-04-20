@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type NamedCluster struct {
+type KubeCtlNamedCluster struct {
 	Name    string `yaml:"name"`
 	Cluster struct {
 		CertificateAuthorityData string `yaml:"certificate-authority-data"`
@@ -19,7 +19,7 @@ type NamedCluster struct {
 	} `yaml:"cluster"`
 }
 
-type NamedContext struct {
+type KubeCtlNamedContext struct {
 	Name    string `yaml:"name"`
 	Context struct {
 		Cluster string `yaml:"cluster"`
@@ -27,7 +27,7 @@ type NamedContext struct {
 	} `yaml:"context"`
 }
 
-type NamedUser struct {
+type KubeCtlNamedUser struct {
 	Name string `yaml:"name"`
 	User struct {
 		ClientCertificateData string `yaml:"client-certificate-data"`
@@ -35,18 +35,18 @@ type NamedUser struct {
 	} `yaml:"user"`
 }
 
-type Config struct {
-	APIVersion     string         `yaml:"apiVersion"`
-	Kind           string         `yaml:"kind"`
-	Clusters       []NamedCluster `yaml:"clusters"`
-	Contexts       []NamedContext `yaml:"contexts"`
-	CurrentContext string         `yaml:"current-context"`
-	Preferences    struct{}       `yaml:"preferences"`
-	Users          []NamedUser    `yaml:"users"`
+type KubeCtlConfig struct {
+	APIVersion     string                `yaml:"apiVersion"`
+	Kind           string                `yaml:"kind"`
+	Clusters       []KubeCtlNamedCluster `yaml:"clusters"`
+	Contexts       []KubeCtlNamedContext `yaml:"contexts"`
+	CurrentContext string                `yaml:"current-context"`
+	Preferences    struct{}              `yaml:"preferences"`
+	Users          []KubeCtlNamedUser    `yaml:"users"`
 }
 
 // Load reads a YAML file into the KubernetesConfig struct.
-func (config *Config) Load(filename string) error {
+func (config *KubeCtlConfig) Load(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("error opening KubernetesConfig: %w", err)
@@ -70,7 +70,7 @@ func (config *Config) Load(filename string) error {
 }
 
 // Validate checks if the KubernetesConfig struct is valid.
-func (config *Config) Validate() error {
+func (config *KubeCtlConfig) Validate() error {
 	if config.APIVersion != "v1" {
 		return fmt.Errorf("invalid API version: %s", config.APIVersion)
 	}
@@ -82,7 +82,7 @@ func (config *Config) Validate() error {
 	return nil
 }
 
-func (config *Config) FindCluster(name string) int {
+func (config *KubeCtlConfig) FindCluster(name string) int {
 	for i, cluster := range config.Clusters {
 		if cluster.Name == name {
 			return i
@@ -90,7 +90,7 @@ func (config *Config) FindCluster(name string) int {
 	}
 	return -1
 }
-func (config *Config) FindContext(name string) int {
+func (config *KubeCtlConfig) FindContext(name string) int {
 	for i, context := range config.Contexts {
 		if context.Name == name {
 			return i
@@ -98,7 +98,7 @@ func (config *Config) FindContext(name string) int {
 	}
 	return -1
 }
-func (config *Config) FindUser(name string) int {
+func (config *KubeCtlConfig) FindUser(name string) int {
 	for i, user := range config.Users {
 		if user.Name == name {
 			return i
@@ -107,7 +107,7 @@ func (config *Config) FindUser(name string) int {
 	return -1
 }
 
-func (config *Config) WriteToFile(filename string) error {
+func (config *KubeCtlConfig) WriteToFile(filename string) error {
 
 	filename, err := ExpandEnv(filename)
 	if err != nil {
@@ -161,8 +161,8 @@ func (config *Config) WriteToFile(filename string) error {
 // -----------------------------------------------------------------------------
 
 type K8sConfigPair struct {
-	Template Config
-	Target   Config
+	Template KubeCtlConfig
+	Target   KubeCtlConfig
 }
 
 func (pair *K8sConfigPair) LoadConfigs(templateFilename string, targetFilename string) error {
@@ -188,7 +188,7 @@ func (pair *K8sConfigPair) LoadConfigs(templateFilename string, targetFilename s
 	}
 	err = pair.Target.Load(targetFilename)
 	if err != nil {
-		pair.Target = Config{
+		pair.Target = KubeCtlConfig{
 			APIVersion: "v1",
 			Kind:       "Config",
 		}

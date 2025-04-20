@@ -6,15 +6,18 @@ package tfresource
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/vpath"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -44,8 +47,8 @@ type GenericResourceModel struct {
 	tfprovider.OutputMetadata
 }
 
-func (grm *GenericResourceModel) BuildManifest(manifest *unstructured.Unstructured) error {
-	manifestStr := grm.ManifestString.ValueString()
+func (model *GenericResourceModel) BuildManifest(manifest *unstructured.Unstructured) error {
+	manifestStr := model.ManifestString.ValueString()
 	var err error
 	*manifest, err = kresource.ParseSingleYamlManifest(manifestStr)
 	if err != nil {
@@ -59,26 +62,55 @@ func (grm *GenericResourceModel) BuildManifest(manifest *unstructured.Unstructur
 	}
 	return nil
 }
-func (grm *GenericResourceModel) FromManifest(manifest *unstructured.Unstructured) error {
-	grm.OutputMetadata.FromManifest(manifest)
-	//s, _ := kresource.FormatYaml(actual)
-	//grm.ManifestString = basetypes.NewStringValue(s)
+func (model *GenericResourceModel) FromManifest(manifest *unstructured.Unstructured) error {
+	model.OutputMetadata.FromManifest(manifest)
+	previousManifest, err := kresource.ParseSingleYamlManifest(model.ManifestString.ValueString())
+	if err != nil {
+		return err
+	}
+
+	changed := false
+	diffHandler := func(path string, left, right interface{}) error {
+		if left != nil {
+			changed = true
+			return fmt.Errorf("left: %v, right: %v", left, right)
+		}
+		return nil
+	}
+
+	err = vpath.FindDifferences("", previousManifest.Object, manifest.Object, vpath.DifferenceHandlerFunc(diffHandler))
+	_ = err
+
+	if changed {
+		// If the manifest has changed, we need to update the manifest string
+		// to reflect the new state.
+		// This is a bit of a hack, but we need to do this to ensure that the
+		// resource is updated correctly.
+
+		//yamlData, err := yaml.Marshal(manifest.Object)
+		//if err != nil {
+		//	return err
+		//}
+		yamlData := []byte("changed....")
+
+		model.ManifestString = basetypes.NewStringValue(string(yamlData))
+	}
 	return nil
 }
-func (grm *GenericResourceModel) GetApiOptions() *kresource.APIOptions {
-	return grm.ApiOptions.Options()
+func (model *GenericResourceModel) GetApiOptions() *kresource.APIClientOptions {
+	return model.ApiOptions.Options()
 }
-func (grm *GenericResourceModel) GetResouceKey() (kresource.Key, error) {
-	manifest, err := kresource.ParseSingleYamlManifest(grm.ManifestString.ValueString())
+func (model *GenericResourceModel) GetResouceKey() (kresource.ResourceKey, error) {
+	manifest, err := kresource.ParseSingleYamlManifest(model.ManifestString.ValueString())
 	if err != nil {
-		return kresource.Key{}, nil
+		return kresource.ResourceKey{}, nil
 	}
 
 	namespace := manifest.GetNamespace()
-	return kresource.Key{
+	return kresource.ResourceKey{
 		ApiVersion: manifest.GetAPIVersion(),
 		Kind:       manifest.GetKind(),
-		MetaData: kresource.MetaData{
+		MetaData: kresource.ResourceMetaData{
 			Name:        manifest.GetName(),
 			Labels:      manifest.GetLabels(),
 			Annotations: manifest.GetAnnotations(),
@@ -99,7 +131,7 @@ func (r *KubernetesResource) Schema(ctx context.Context, req resource.SchemaRequ
 		Attributes: map[string]schema.Attribute{
 			"manifest": schema.StringAttribute{
 				MarkdownDescription: "Manifest to apply",
-				Optional:            true,
+				Required:            true,
 			},
 			"api_options": tfprovider.ApiOptionsModelSchema(),
 			"resource_version": schema.StringAttribute{
@@ -137,9 +169,8 @@ func (r *KubernetesResource) Create(ctx context.Context, req resource.CreateRequ
 }
 
 func (r *KubernetesResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	plan := &GenericResourceModel{}
 	state := &GenericResourceModel{}
-	r.ResourceBase.Read(ctx, plan, state, req, resp)
+	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
 func (r *KubernetesResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

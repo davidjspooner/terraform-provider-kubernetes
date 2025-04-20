@@ -21,18 +21,34 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 )
 
-type APIOptions struct {
+type APIClientOptions struct {
 	Retry          *job.RetryModel
 	FieldManager   *string
 	ForceConflicts *bool
 }
 
+type APIClientWrapper struct {
+	config                *rest.Config
+	discovery             discovery.CachedDiscoveryInterface
+	dynamic               dynamic.Interface
+	configContext         string
+	configContextAuthInfo string
+	configContextCluster  string
+	configPaths           []string
+	namespace             string
+	resourceTypes         map[string]*ResourceType
+	lock                  sync.Mutex
+}
+
 func MergeAPIOptions(
-	models ...*APIOptions,
-) (*APIOptions, error) {
-	merged := &APIOptions{}
+	models ...*APIClientOptions,
+) (*APIClientOptions, error) {
+	merged := &APIClientOptions{}
 	var err error
 	for _, model := range models {
+		if model == nil {
+			continue
+		}
 		if model.Retry != nil {
 			merged.Retry, err = job.MergeRetryModels(merged.Retry, model.Retry)
 			if err != nil {
@@ -49,6 +65,10 @@ func MergeAPIOptions(
 	if merged.FieldManager == nil || *merged.FieldManager == "" {
 		s := "terraform-provider-kubernetes"
 		merged.FieldManager = &s
+	}
+	if merged.ForceConflicts == nil {
+		b := true
+		merged.ForceConflicts = &b
 	}
 	if merged.Retry == nil {
 		merged.Retry = &job.RetryModel{}
@@ -83,36 +103,13 @@ func MergeAPIOptions(
 	return merged, nil
 }
 
-type SharedApi struct {
-	lock sync.Mutex
-
-	fieldManager string
-
-	namespace string
-	config    *rest.Config
-
-	configPaths           []string
-	configContext         string
-	configContextAuthInfo string
-	configContextCluster  string
-
-	resourceTypes map[string]*ResourceType
-
-	dynamic   *dynamic.DynamicClient
-	discovery discovery.CachedDiscoveryInterface
-}
-
 type ResourceType struct {
 	Kind       string
 	APIVersion string
 	Namespaced bool
 }
 
-func (shared *SharedApi) ResourceInterface(ctx context.Context, apiVersion, kind, namespace string) (dynamic.ResourceInterface, error) {
-
-	if shared.fieldManager == "" {
-		shared.fieldManager = "terraform-provider-kubernetes"
-	}
+func (shared *APIClientWrapper) ResourceInterface(ctx context.Context, apiVersion, kind, namespace string) (dynamic.ResourceInterface, error) {
 
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
@@ -153,13 +150,13 @@ func (shared *SharedApi) ResourceInterface(ctx context.Context, apiVersion, kind
 	return dr, nil
 }
 
-func (shared *SharedApi) ReloadConfig(ctx context.Context) error {
+func (shared *APIClientWrapper) ReloadConfig(ctx context.Context) error {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 	return shared.reloadConfig(ctx)
 }
 
-func (shared *SharedApi) reloadConfig(ctx context.Context) error {
+func (shared *APIClientWrapper) reloadConfig(ctx context.Context) error {
 	overrides := &clientcmd.ConfigOverrides{}
 	loader := &clientcmd.ClientConfigLoadingRules{}
 
@@ -241,25 +238,25 @@ func (shared *SharedApi) reloadConfig(ctx context.Context) error {
 	return nil
 }
 
-func (shared *SharedApi) SetConfigContext(context string) {
+func (shared *APIClientWrapper) SetConfigContext(context string) {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 	shared.configContext = context
 }
 
-func (shared *SharedApi) SetConfigContextAuthInfo(authInfo string) {
+func (shared *APIClientWrapper) SetConfigContextAuthInfo(authInfo string) {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 	shared.configContextAuthInfo = authInfo
 }
 
-func (shared *SharedApi) SetConfigContextCluster(cluster string) {
+func (shared *APIClientWrapper) SetConfigContextCluster(cluster string) {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 	shared.configContextCluster = cluster
 }
 
-func (shared *SharedApi) SetConfigPaths(paths []string) {
+func (shared *APIClientWrapper) SetConfigPaths(paths []string) {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 	if len(paths) == 0 {
@@ -268,13 +265,13 @@ func (shared *SharedApi) SetConfigPaths(paths []string) {
 	shared.configPaths = paths
 }
 
-func (shared *SharedApi) SetNamespace(namespace string) {
+func (shared *APIClientWrapper) SetNamespace(namespace string) {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 	shared.namespace = namespace
 }
 
-func (shared *SharedApi) fetchResourceTypes() error {
+func (shared *APIClientWrapper) fetchResourceTypes() error {
 	if shared.discovery == nil {
 		return fmt.Errorf("discovery client is not initialized")
 	}
@@ -313,14 +310,14 @@ func (shared *SharedApi) fetchResourceTypes() error {
 	return nil
 }
 
-func (shared *SharedApi) GetNamespace(namespace *string) string {
+func (shared *APIClientWrapper) GetNamespace(namespace *string) string {
 	if namespace == nil || *namespace == "" {
 		return shared.namespace
 	}
 	return *namespace
 }
 
-func (shared *SharedApi) getNamespaceForKind(kind string, namespace *string) string {
+func (shared *APIClientWrapper) getNamespaceForKind(kind string, namespace *string) string {
 	shared.lock.Lock()
 	defer shared.lock.Unlock()
 
@@ -336,7 +333,7 @@ func (shared *SharedApi) getNamespaceForKind(kind string, namespace *string) str
 	return shared.GetNamespace(namespace)
 }
 
-func (shared *SharedApi) Get(ctx context.Context, key *Key, apiOptions *APIOptions) (unstructured.Unstructured, error) {
+func (shared *APIClientWrapper) Get(ctx context.Context, key *ResourceKey, apiOptions *APIClientOptions) (unstructured.Unstructured, error) {
 	// fetch Object and update the model
 
 	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.MetaData.Namespace))
@@ -351,15 +348,23 @@ func (shared *SharedApi) Get(ctx context.Context, key *Key, apiOptions *APIOptio
 	return *u, nil
 }
 
-func (shared *SharedApi) Apply(ctx context.Context, key *Key, u unstructured.Unstructured, apiOptions *APIOptions) error {
+func (shared *APIClientWrapper) Apply(ctx context.Context, key *ResourceKey, u unstructured.Unstructured, apiOptions *APIClientOptions) error {
 	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.MetaData.Namespace))
 	if err != nil {
 		return err
 	}
 
-	reply, err := ri.Apply(ctx, key.MetaData.Name, &u, metav1.ApplyOptions{
-		FieldManager: shared.fieldManager,
-	})
+	ao := metav1.ApplyOptions{}
+	if apiOptions != nil {
+		if apiOptions.FieldManager != nil {
+			ao.FieldManager = *apiOptions.FieldManager
+		}
+		if apiOptions.ForceConflicts != nil {
+			ao.Force = *apiOptions.ForceConflicts
+		}
+	}
+
+	reply, err := ri.Apply(ctx, key.MetaData.Name, &u, ao)
 	if err != nil {
 		return err
 	}
@@ -370,7 +375,7 @@ func (shared *SharedApi) Apply(ctx context.Context, key *Key, u unstructured.Uns
 	return nil
 }
 
-func (shared *SharedApi) Delete(ctx context.Context, key *Key, apiOptions *APIOptions) error {
+func (shared *APIClientWrapper) Delete(ctx context.Context, key *ResourceKey, apiOptions *APIClientOptions) error {
 	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.MetaData.Namespace))
 	if err != nil {
 		return err

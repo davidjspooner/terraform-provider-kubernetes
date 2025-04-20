@@ -28,11 +28,15 @@ func ApiOptionsModelSchema() schema.SingleNestedAttribute {
 				Optional:    true,
 			},
 		},
+		Optional: true,
 	}
 }
 
-func (model *APIOptionsModel) Options() *kresource.APIOptions {
-	opt := &kresource.APIOptions{
+func (model *APIOptionsModel) Options() *kresource.APIClientOptions {
+	if model == nil {
+		return nil
+	}
+	opt := &kresource.APIClientOptions{
 		Retry: model.Retry,
 	}
 	if model.FieldManager != nil {

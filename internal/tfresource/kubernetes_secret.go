@@ -5,6 +5,8 @@ package tfresource
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -38,26 +40,26 @@ type KubernetesSecret struct {
 // SecretModel describes the resource data model.
 type SecretModel struct {
 	Type          types.String                `tfsdk:"type"`
-	MetaData      kresource.MetaData          `tfsdk:"metadata"`
+	MetaData      kresource.ResourceMetaData  `tfsdk:"metadata"`
 	Immutable     types.Bool                  `tfsdk:"immutable"`
 	Filenames     *tfprovider.FilesModel      `tfsdk:"file_data"`
 	TextFilenames *tfprovider.FilesModel      `tfsdk:"text_file_data"`
 	Data          types.Map                   `tfsdk:"data"`
-	TextData      types.Map                   `tfsdk:"text_data"`
+	StringData    types.Map                   `tfsdk:"string_data"`
 	ApiOptions    *tfprovider.APIOptionsModel `tfsdk:"api_options"`
+	Hashes        types.Map                   `tfsdk:"hashes"`
 
 	tfprovider.OutputMetadata
+	values kresource.StringMap
 }
 
-func (dmm *SecretModel) BuildManifest(manifest *unstructured.Unstructured) error {
-	sm := &kresource.StringMap{}
-	sm.SetBase64Encoded(true)
+func (model *SecretModel) BuildManifest(manifest *unstructured.Unstructured) error {
 
-	err := dmm.Filenames.AddToStringMap(sm)
+	err := model.Filenames.AddToStringMap(&model.values)
 	if err != nil {
 		return err
 	}
-	err = sm.AddMaps(dmm.TextData, dmm.Data)
+	err = tfprovider.AddMapsToStringMap(&model.values, &model.StringData, &model.Data)
 	if err != nil {
 		return err
 	}
@@ -66,44 +68,71 @@ func (dmm *SecretModel) BuildManifest(manifest *unstructured.Unstructured) error
 		"apiVersion": "v1",
 		"kind":       "Secret",
 		"metadata": map[string]interface{}{
-			"name":        dmm.MetaData.Name,
-			"labels":      dmm.MetaData.Labels,
-			"annotations": dmm.MetaData.Annotations,
+			"name":        model.MetaData.Name,
+			"labels":      model.MetaData.Labels,
+			"annotations": model.MetaData.Annotations,
 		},
-		"data": sm.GetUnstructured(),
+		"data":       model.values.GetUnstructuredBase64(),
+		"stringData": model.values.GetUnstructuredText(),
 	})
-	if dmm.MetaData.Namespace != nil {
-		manifest.SetNamespace(*dmm.MetaData.Namespace)
+	if model.MetaData.Namespace != nil {
+		manifest.SetNamespace(*model.MetaData.Namespace)
 	}
-	immutable := dmm.Immutable.ValueBool()
+	immutable := model.Immutable.ValueBool()
 	if immutable {
 		manifest.Object["immutable"] = immutable
 	}
-	sType := dmm.Type.ValueString()
+	sType := model.Type.ValueString()
 	if sType == "" {
 		sType = "Opaque"
 	}
 	manifest.Object["type"] = sType
 	return nil
 }
-func (dmm *SecretModel) FromManifest(manifest *unstructured.Unstructured) error {
-	//	dmm.MetaData.SetFromActual(actual)
+
+func (model *SecretModel) FromManifest(manifest *unstructured.Unstructured) error {
+	//	model.MetaData.SetFromActual(actual)
 	s, _, _ := unstructured.NestedString(manifest.Object, "type")
-	dmm.Type = basetypes.NewStringValue(s)
-	dmm.OutputMetadata.FromManifest(manifest)
+	model.Type = basetypes.NewStringValue(s)
+	model.OutputMetadata.FromManifest(manifest)
+	b, _, _ := unstructured.NestedBool(manifest.Object, "immutable")
+	model.Immutable = basetypes.NewBoolValue(b)
+
+	model.values.Clear()
+	hashes := make(map[string]types.String)
+	if manifest.Object["data"] != nil {
+		for k, v := range manifest.Object["data"].(map[string]interface{}) {
+			s := v.(string)
+			model.values.AddBase64(k, s)
+			hash := md5.Sum([]byte(s))
+			s = hex.EncodeToString(hash[:])
+			hashes[k] = basetypes.NewStringValue(s)
+		}
+	}
+	if manifest.Object["stringData"] == nil {
+		for k, v := range manifest.Object["stringData"].(map[string]interface{}) {
+			s := v.(string)
+			model.values.AddText(k, s)
+			hash := md5.Sum([]byte(s))
+			s = hex.EncodeToString(hash[:])
+			hashes[k] = basetypes.NewStringValue(s)
+		}
+	}
+	model.Hashes, _ = types.MapValueFrom(context.Background(), types.StringType, hashes)
+
 	return nil
 }
 
-func (dmm *SecretModel) GetResouceKey() (kresource.Key, error) {
-	return kresource.Key{
+func (model *SecretModel) GetResouceKey() (kresource.ResourceKey, error) {
+	return kresource.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "Secret",
-		MetaData:   dmm.MetaData,
+		MetaData:   model.MetaData,
 	}, nil
 }
 
-func (dmm *SecretModel) GetApiOptions() *kresource.APIOptions {
-	return dmm.ApiOptions.Options()
+func (model *SecretModel) GetApiOptions() *kresource.APIClientOptions {
+	return model.ApiOptions.Options()
 }
 
 func (r *KubernetesSecret) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -123,11 +152,13 @@ func (r *KubernetesSecret) Schema(ctx context.Context, req resource.SchemaReques
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Base64 encoded data to store in the secret",
 				ElementType:         types.StringType,
+				Sensitive:           true,
 				Optional:            true,
 			},
-			"text_data": schema.MapAttribute{
+			"string_data": schema.MapAttribute{
 				MarkdownDescription: "Plain text data to store in the secret ( will be base64 encoded )",
 				ElementType:         types.StringType,
+				Sensitive:           true,
 				Optional:            true,
 			},
 			"type": schema.StringAttribute{
@@ -146,6 +177,11 @@ func (r *KubernetesSecret) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"generation": schema.Int64Attribute{
 				MarkdownDescription: "The generation of the resource.",
+				Computed:            true,
+			},
+			"hashes": schema.MapAttribute{
+				MarkdownDescription: "A map of hashes of the data in the secret",
+				ElementType:         types.StringType,
 				Computed:            true,
 			},
 		},
@@ -174,9 +210,8 @@ func (r *KubernetesSecret) Create(ctx context.Context, req resource.CreateReques
 }
 
 func (r *KubernetesSecret) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	plan := &SecretModel{}
 	state := &SecretModel{}
-	r.ResourceBase.Read(ctx, plan, state, req, resp)
+	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
 func (r *KubernetesSecret) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

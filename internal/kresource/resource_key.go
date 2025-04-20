@@ -7,32 +7,13 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-type MetaData struct {
-	Name        string            `yaml:"name" tfsdk:"name"`
-	Namespace   *string           `yaml:"namespace,omitempty" tfsdk:"namespace"`
-	Labels      map[string]string `yaml:"labels,omitempty" tfsdk:"labels"`
-	Annotations map[string]string `yaml:"annotations,omitempty" tfsdk:"annotations"`
+type ResourceKey struct {
+	ApiVersion string           `yaml:"apiVersion"`
+	Kind       string           `yaml:"kind"`
+	MetaData   ResourceMetaData `yaml:"metadata"`
 }
 
-func (m *MetaData) FromManifest(manifest *unstructured.Unstructured) {
-	m.Name = manifest.GetName()
-	s, _, _ := unstructured.NestedString(manifest.Object, "metadata", "namespace")
-	if s != "" {
-		m.Namespace = &s
-	} else {
-		m.Namespace = nil
-	}
-	m.Labels = manifest.GetLabels()
-	m.Annotations = manifest.GetAnnotations()
-}
-
-type Key struct {
-	ApiVersion string   `yaml:"apiVersion"`
-	Kind       string   `yaml:"kind"`
-	MetaData   MetaData `yaml:"metadata"`
-}
-
-func (key *Key) String() string {
+func (key *ResourceKey) String() string {
 
 	sb := strings.Builder{}
 	fmt.Fprintf(&sb, "%s/%s", key.ApiVersion, key.Kind)
@@ -45,7 +26,7 @@ func (key *Key) String() string {
 	return sb.String()
 }
 
-func CompareKeys(a, b *Key) int {
+func CompareKeys(a, b *ResourceKey) int {
 	r := strings.Compare(a.ApiVersion, b.ApiVersion)
 	if r != 0 {
 		return r
@@ -69,11 +50,11 @@ func CompareKeys(a, b *Key) int {
 
 	return 0
 }
-func GetKey(r unstructured.Unstructured) *Key {
+func GetKey(r unstructured.Unstructured) *ResourceKey {
 	if r.Object == nil {
 		return nil
 	}
-	k := Key{}
+	k := ResourceKey{}
 	k.ApiVersion = r.GetAPIVersion()
 	k.Kind = r.GetKind()
 	k.MetaData.Name = r.GetName()

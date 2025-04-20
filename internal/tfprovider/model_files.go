@@ -82,8 +82,36 @@ func (fm *FilesModel) AddToStringMap(sm *kresource.StringMap) error {
 			matches = []string{path}
 		}
 		for _, match := range matches {
-			if err := sm.AddFileContents(match, templateType, values); err != nil {
+			if err := sm.AddTextFileContents(match, templateType, values); err != nil {
 				return fmt.Errorf("error adding file contents for path %q: %w", match, err)
+			}
+		}
+	}
+	return nil
+}
+
+func AddMapsToStringMap(sm *kresource.StringMap, textData, base64Data *types.Map) error {
+	var err error
+	if sm == nil {
+		return fmt.Errorf("StringMap is nil")
+	}
+	if !textData.IsNull() && !textData.IsUnknown() {
+		textMap := make(map[string]string)
+		textData.ElementsAs(context.Background(), &textMap, false)
+		for k, v := range textMap {
+			err = sm.AddText(k, v)
+			if err != nil {
+				return fmt.Errorf("error adding text data %q: %w", k, err)
+			}
+		}
+	}
+	if !base64Data.IsNull() && !base64Data.IsUnknown() {
+		base64Map := make(map[string]string)
+		base64Data.ElementsAs(context.Background(), &base64Map, false)
+		for k, v := range base64Map {
+			err = sm.AddBase64(k, v)
+			if err != nil {
+				return fmt.Errorf("error adding base64 data %q: %w", k, err)
 			}
 		}
 	}

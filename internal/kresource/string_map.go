@@ -1,218 +1,197 @@
 package kresource
 
 import (
-	"bytes"
-	"context"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	htmp_template "html/template"
+	html_template "html/template"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	text_template "text/template"
-
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type StringMap struct {
-	base64Encoded bool
-	data          map[string]string
+	textData          map[string]string
+	base64EncodedData map[string]string
 }
 
-func (sm *StringMap) SetBase64Encoded(b64 bool) {
-	if sm.base64Encoded != b64 {
-		if b64 {
-			for k, v := range sm.data {
-				b := []byte(v)
-				sm.data[k] = base64.StdEncoding.EncodeToString(b)
-			}
-		} else {
-			for k, v := range sm.data {
-				b, err := base64.StdEncoding.DecodeString(v)
-				if err != nil {
-					continue // Ignore errors for now
-				}
-				sm.data[k] = string(b)
-			}
+func (sm *StringMap) Clear() {
+	sm.textData = nil
+	sm.base64EncodedData = nil
+}
+
+func (sm *StringMap) validateUniqueKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("key is empty")
+	}
+	for _, badChar := range "/\\?%*:|\"<>.\n\r\t\b\f" {
+		if strings.ContainsRune(key, badChar) {
+			return fmt.Errorf("key %q contains %q", key, badChar)
 		}
 	}
-	sm.base64Encoded = b64
-}
-
-func (sm *StringMap) Add(key, value string) error {
-	if key == "" {
-		return errors.New("key in data set is empty")
+	lowerKey := strings.ToLower(key)
+	for exisingKey := range sm.textData {
+		if lowerKey == strings.ToLower(exisingKey) {
+			return fmt.Errorf("key %q already exists", key)
+		}
 	}
-	_, ok := sm.data[key]
-	if ok {
-		return fmt.Errorf("key %q already exists in data set", key)
+	for exisingKey := range sm.base64EncodedData {
+		if lowerKey == strings.ToLower(exisingKey) {
+			return fmt.Errorf("key %q already exists", key)
+		}
 	}
-	if sm.data == nil {
-		sm.data = make(map[string]string)
-	}
-	if sm.base64Encoded {
-		b := []byte(value)
-		value = base64.StdEncoding.EncodeToString(b)
-	}
-	sm.data[key] = value
 	return nil
 }
 
+func (sm *StringMap) AddText(key, value string) error {
+	if err := sm.validateUniqueKey(key); err != nil {
+		return err
+	}
+	if sm.textData == nil {
+		sm.textData = make(map[string]string)
+	}
+	sm.textData[key] = value
+	return nil
+}
 func (sm *StringMap) AddBase64(key, value string) error {
-	if key == "" {
-		return errors.New("key in data set is empty")
+	if err := sm.validateUniqueKey(key); err != nil {
+		return err
 	}
-	_, ok := sm.data[key]
-	if ok {
-		return fmt.Errorf("key %q already exists in data set", key)
+	if sm.base64EncodedData == nil {
+		sm.base64EncodedData = make(map[string]string)
 	}
-	if sm.data == nil {
-		sm.data = make(map[string]string)
+	sm.base64EncodedData[key] = value
+	return nil
+}
+func (sm *StringMap) EncodeAsBase64AndAdd(key, value string) error {
+	if err := sm.validateUniqueKey(key); err != nil {
+		return err
 	}
-	if !sm.base64Encoded {
-		b, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return fmt.Errorf("error decoding base64 value for key %q: %w", key, err)
-		}
-		value = string(b)
+	if sm.base64EncodedData == nil {
+		sm.base64EncodedData = make(map[string]string)
 	}
-	sm.data[key] = value
+	base64Value := base64.StdEncoding.EncodeToString([]byte(value))
+	sm.base64EncodedData[key] = base64Value
 	return nil
 }
 
-func (sm *StringMap) Get(key string) (string, error) {
-	if sm == nil || len(sm.data) == 0 {
-		return "", fmt.Errorf("key %q not found in empty data set", key)
+func (sm *StringMap) AddTextFileContents(path, templateType string, values map[string]string) error {
+	if sm.textData == nil {
+		sm.textData = make(map[string]string)
 	}
-	value, ok := sm.data[key]
-	if !ok {
-		return "", fmt.Errorf("key %q not found in data set", key)
-	}
-	if sm.base64Encoded {
-		b, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return "", fmt.Errorf("error decoding base64 value for key %q: %w", key, err)
-		}
-		value = string(b)
-	}
-	return value, nil
-}
-
-func (sm *StringMap) GetBase64(key string) (string, error) {
-	if sm == nil || len(sm.data) == 0 {
-		return "", fmt.Errorf("key %q not found in empty data set", key)
-	}
-	value, ok := sm.data[key]
-	if !ok {
-		return "", fmt.Errorf("key %q not found in data set", key)
-	}
-	if !sm.base64Encoded {
-		b := []byte(value)
-		value = base64.StdEncoding.EncodeToString(b)
-	}
-	return value, nil
-}
-
-func (sm *StringMap) AddMaps(data, binaryData types.Map) error {
-	var elements map[string]string
-
-	diags := data.ElementsAs(context.Background(), &elements, false)
-	if diags.HasError() {
-		return fmt.Errorf("error getting data map")
+	basename := filepath.Base(path)
+	err := sm.validateUniqueKey(basename)
+	if err != nil {
+		return err
 	}
 
-	for k, v := range elements {
-		if k == "" {
-			return errors.New("key is empty string")
-		}
-		if err := sm.Add(k, v); err != nil {
-			return err
-		}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("error reading file %q: %w", path, err)
 	}
-	diags = binaryData.ElementsAs(context.Background(), &elements, false)
-	if diags.HasError() {
-		return fmt.Errorf("error getting data map")
-	}
-	for k, v := range elements {
-		if k == "" {
-			return errors.New("key is empty string")
-		}
-		if err := sm.AddBase64(k, v); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
-func (sm *StringMap) GetUnstructured() map[string]string {
-	if sm == nil || len(sm.data) == 0 {
+	if values == nil {
+		sm.textData[basename] = string(content)
 		return nil
 	}
-	copy := make(map[string]string, len(sm.data))
-	for k, v := range sm.data {
-		copy[k] = v
+
+	switch templateType {
+	case "text":
+		// No processing needed, just read the file
+		t := text_template.New(basename)
+		t, err = t.Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("error parsing template %q: %w", basename, err)
+		}
+		var sb strings.Builder
+		err = t.Execute(&sb, values)
+		if err != nil {
+			return fmt.Errorf("error executing template %q: %w", basename, err)
+		}
+		sm.textData[basename] = sb.String()
+	case "html":
+		t := html_template.New(basename)
+		t, err = t.Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("error parsing template %q: %w", basename, err)
+		}
+		var sb strings.Builder
+		err = t.Execute(&sb, values)
+		if err != nil {
+			return fmt.Errorf("error executing template %q: %w", basename, err)
+		}
+		sm.textData[basename] = sb.String()
+	default:
+		return fmt.Errorf("unknown template type %q", templateType)
 	}
-	return copy
+	return nil
 }
 
-func (sm *StringMap) AddFileContents(path string, TemplateType string, values map[string]string) error {
-	if path == "" {
-		return errors.New("path in data set is empty")
+func (sm *StringMap) AddFileContentAsBase64(path string) error {
+	if sm.base64EncodedData == nil {
+		sm.base64EncodedData = make(map[string]string)
 	}
+	basename := filepath.Base(path)
+	err := sm.validateUniqueKey(basename)
+	if err != nil {
+		return err
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("error opening file %q: %w", path, err)
 	}
 	defer f.Close()
-	b, err := io.ReadAll(f)
+	sb := strings.Builder{}
+	e := base64.NewEncoder(base64.StdEncoding, &sb)
+	_, err = io.Copy(e, f)
 	if err != nil {
-		return fmt.Errorf("error reading file %q: %w", path, err)
+		return fmt.Errorf("error encoding file %q: %w", path, err)
 	}
-	basename := filepath.Base(path)
-	switch TemplateType {
-	case "text":
-		t := text_template.New(path)
-		t, err = t.Parse(string(b))
-		if err != nil {
-			return fmt.Errorf("error parsing text template %q: %w", path, err)
-		}
-		var expanded bytes.Buffer
-		err = t.Execute(&expanded, values)
-		if err != nil {
-			return fmt.Errorf("error executing text template %q: %w", path, err)
-		}
-		sm.Add(basename, expanded.String())
-	case "html":
-		t := htmp_template.New(path)
-		t, err = t.Parse(string(b))
-		if err != nil {
-			return fmt.Errorf("error parsing html template %q: %w", path, err)
-		}
-		var expanded bytes.Buffer
-		err = t.Execute(&expanded, values)
-		if err != nil {
-			return fmt.Errorf("error executing html template %q: %w", path, err)
-		}
-		sm.Add(basename, expanded.String())
-	case "":
-		if len(values) > 0 {
-			return fmt.Errorf("values provided but template_type is not set")
-		}
-		sm.Add(basename, string(b))
-	default:
-		return fmt.Errorf("unsupported template type %q", TemplateType)
-	}
-
+	e.Close()
+	sm.base64EncodedData[basename] = sb.String()
 	return nil
 }
 
-func (sm *StringMap) ForEach(ctx context.Context, fn func(key, value string) error) error {
-	if sm == nil || len(sm.data) == 0 {
+func (sm *StringMap) GetUnstructuredText() map[string]interface{} {
+	if sm.textData == nil {
 		return nil
 	}
-	for k, v := range sm.data {
-		if err := fn(k, v); err != nil {
+	result := make(map[string]interface{})
+	for k, v := range sm.textData {
+		result[k] = v
+	}
+	return result
+}
+func (sm *StringMap) GetUnstructuredBase64() map[string]interface{} {
+	if sm.base64EncodedData == nil {
+		return nil
+	}
+	result := make(map[string]interface{})
+	for k, v := range sm.base64EncodedData {
+		result[k] = v
+	}
+	return result
+}
+func (sm *StringMap) ForEachTextContent(f func(key string, value string) error) error {
+	if sm.textData == nil {
+		return nil
+	}
+	for k, v := range sm.textData {
+		if err := f(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (sm *StringMap) ForEachBase64Content(f func(key string, value string) error) error {
+	if sm.base64EncodedData == nil {
+		return nil
+	}
+	for k, v := range sm.base64EncodedData {
+		if err := f(k, v); err != nil {
 			return err
 		}
 	}
