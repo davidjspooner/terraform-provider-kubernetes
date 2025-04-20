@@ -32,7 +32,7 @@ func init() {
 
 // KubernetesResource defines the resource implementation.
 type KubernetesResource struct {
-	resourceBase     *tfprovider.BaseResourceHandler[*GenericResourceModel]
+	tfprovider.ResourceBase[*GenericResourceModel]
 	tfTypeNameSuffix string
 }
 
@@ -40,7 +40,7 @@ type KubernetesResource struct {
 type GenericResourceModel struct {
 	ManifestString types.String `tfsdk:"manifest"`
 
-	ApiOptions *tfprovider.APIOptions `tfsdk:"api_options"`
+	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
 	tfprovider.OutputMetadata
 }
 
@@ -65,8 +65,8 @@ func (grm *GenericResourceModel) FromManifest(manifest *unstructured.Unstructure
 	//grm.ManifestString = basetypes.NewStringValue(s)
 	return nil
 }
-func (grm *GenericResourceModel) GetApiOptions() *tfprovider.APIOptions {
-	return grm.ApiOptions
+func (grm *GenericResourceModel) GetApiOptions() *kresource.APIOptions {
+	return grm.ApiOptions.Options()
 }
 func (grm *GenericResourceModel) GetResouceKey() (kresource.Key, error) {
 	manifest, err := kresource.ParseSingleYamlManifest(grm.ManifestString.ValueString())
@@ -123,23 +123,33 @@ func (r *KubernetesResource) Configure(ctx context.Context, req resource.Configu
 	if req.ProviderData == nil {
 		return
 	}
-	r.resourceBase = tfprovider.NewCommonHandler[*GenericResourceModel](ctx, req, resp)
+	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
+		return
+	}
+	r.Provider = provider
 }
 
 func (r *KubernetesResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	r.resourceBase.Create(ctx, req, resp)
+	plan := &GenericResourceModel{}
+	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
 func (r *KubernetesResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	r.resourceBase.Read(ctx, req, resp)
+	plan := &GenericResourceModel{}
+	state := &GenericResourceModel{}
+	r.ResourceBase.Read(ctx, plan, state, req, resp)
 }
 
 func (r *KubernetesResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	r.resourceBase.Update(ctx, req, resp)
+	plan := &GenericResourceModel{}
+	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
 func (r *KubernetesResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	r.resourceBase.Delete(ctx, req, resp)
+	state := &GenericResourceModel{}
+	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
 func (r *KubernetesResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

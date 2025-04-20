@@ -3,8 +3,6 @@ module github.com/davidjspooner/terraform-provider-kubernetes
 go 1.23.4
 
 require (
-	//github.com/davidjspooner/dsflow v0.0.0-20240908071606-664c5516f0c1
-	//github.com/davidjspooner/dsvalue v0.0.0-20240907200453-5dac9df7f47e
 	github.com/hashicorp/terraform-plugin-docs v0.19.4
 	github.com/hashicorp/terraform-plugin-framework v1.11.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0

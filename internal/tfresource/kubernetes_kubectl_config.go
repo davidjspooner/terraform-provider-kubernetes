@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -92,7 +93,7 @@ func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, r
 }
 
 func (r *Config) createOrUpdate(ctx context.Context, data *ConfigModel) error {
-	pair := tfprovider.K8sConfigPair{}
+	pair := kresource.K8sConfigPair{}
 	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()
 	pair.LoadConfigs(source_filename, target_filename)
@@ -177,7 +178,7 @@ func (r *Config) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	pair := tfprovider.K8sConfigPair{}
+	pair := kresource.K8sConfigPair{}
 
 	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -167,8 +168,8 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
-	sm := tfprovider.StringMap{}
-	sm.AddFileModel(&config.FileNames)
+	sm := &kresource.StringMap{}
+	config.FileNames.AddToStringMap(sm)
 
 	var values map[string]string
 	var diags diag.Diagnostics

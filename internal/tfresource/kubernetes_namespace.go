@@ -29,7 +29,7 @@ func init() {
 
 // KubernetesNamespace defines the resource implementation.
 type KubernetesNamespace struct {
-	resourceBase     *tfprovider.BaseResourceHandler[*NamespaceModel]
+	tfprovider.ResourceBase[*NamespaceModel]
 	tfTypeNameSuffix string
 }
 
@@ -37,7 +37,7 @@ type KubernetesNamespace struct {
 type NamespaceModel struct {
 	MetaData kresource.MetaData `tfsdk:"metadata"`
 
-	ApiOptions *tfprovider.APIOptions `tfsdk:"api_options"`
+	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
 	tfprovider.OutputMetadata
 }
 
@@ -68,8 +68,8 @@ func (nsm *NamespaceModel) FromManifest(manifest *unstructured.Unstructured) err
 	nsm.MetaData.FromManifest(manifest)
 	return nil
 }
-func (nsm *NamespaceModel) GetApiOptions() *tfprovider.APIOptions {
-	return nsm.ApiOptions
+func (nsm *NamespaceModel) GetApiOptions() *kresource.APIOptions {
+	return nsm.ApiOptions.Options()
 }
 
 func (nsm *NamespaceModel) GetResouceKey() (kresource.Key, error) {
@@ -113,23 +113,33 @@ func (r *KubernetesNamespace) Configure(ctx context.Context, req resource.Config
 	if req.ProviderData == nil {
 		return
 	}
-	r.resourceBase = tfprovider.NewCommonHandler[*NamespaceModel](ctx, req, resp)
+	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
+		return
+	}
+	r.Provider = provider
 }
 
 func (r *KubernetesNamespace) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	r.resourceBase.Create(ctx, req, resp)
+	plan := &NamespaceModel{}
+	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
 func (r *KubernetesNamespace) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	r.resourceBase.Read(ctx, req, resp)
+	plan := &NamespaceModel{}
+	state := &NamespaceModel{}
+	r.ResourceBase.Read(ctx, plan, state, req, resp)
 }
 
 func (r *KubernetesNamespace) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	r.resourceBase.Update(ctx, req, resp)
+	plan := &NamespaceModel{}
+	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
 func (r *KubernetesNamespace) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	r.resourceBase.Delete(ctx, req, resp)
+	state := &NamespaceModel{}
+	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
 func (r *KubernetesNamespace) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

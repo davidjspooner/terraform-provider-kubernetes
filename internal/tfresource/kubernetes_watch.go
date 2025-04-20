@@ -49,7 +49,7 @@ type WatchModel struct {
 	State       types.String `tfsdk:"state"`
 	LastChecked types.String `tfsdk:"last_checked"`
 
-	ApiOptions *tfprovider.APIOptions `tfsdk:"api_options"`
+	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
 
 	tfprovider.OutputMetadata
 }
@@ -130,7 +130,7 @@ func (r *KubernetesWatch) Configure(ctx context.Context, req resource.ConfigureR
 
 func (r *KubernetesWatch) checvaluesOnce(ctx context.Context, key *kresource.Key, data *WatchModel) (*tfprovider.CaptureMap, error) {
 
-	apiOptions, err := tfprovider.MergeKubenetesAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions)
+	apiOptions, err := kresource.MergeAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions.Options())
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ func (r *KubernetesWatch) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 func (r *KubernetesWatch) retry(ctx context.Context, data *WatchModel, task func(context.Context, int) error) error {
-	apiOptions, err := tfprovider.MergeKubenetesAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions)
+	apiOptions, err := kresource.MergeAPIOptions(r.provider.DefaultApiOptions, data.ApiOptions.Options())
 	if err != nil {
 		return err
 	}

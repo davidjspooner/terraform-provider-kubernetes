@@ -30,27 +30,28 @@ func init() {
 
 // KubernetesConfigMap defines the resource implementation.
 type KubernetesConfigMap struct {
-	resourceBase     *tfprovider.BaseResourceHandler[*ConfigMapModel]
 	tfTypeNameSuffix string
+	tfprovider.ResourceBase[*ConfigMapModel]
 }
 
 // ConfigMapModel describes the resource data model.
 type ConfigMapModel struct {
-	MetaData   kresource.MetaData     `tfsdk:"metadata"`
-	Immutable  types.Bool             `tfsdk:"immutable"`
-	Filenames  *tfprovider.FilesModel `tfsdk:"file_data"`
-	Data       types.Map              `tfsdk:"data"`
-	BinaryData types.Map              `tfsdk:"binary_data"`
-	ApiOptions *tfprovider.APIOptions `tfsdk:"api_options"`
+	MetaData        kresource.MetaData          `tfsdk:"metadata"`
+	Immutable       types.Bool                  `tfsdk:"immutable"`
+	Filenames       *tfprovider.FilesModel      `tfsdk:"file_data"`
+	BinaryFilenames *tfprovider.FilesModel      `tfsdk:"binary_file_data"`
+	Data            types.Map                   `tfsdk:"data"`
+	BinaryData      types.Map                   `tfsdk:"binary_data"`
+	ApiOptions      *tfprovider.APIOptionsModel `tfsdk:"api_options"`
 
 	tfprovider.OutputMetadata
 }
 
 func (dmm *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) error {
-	sm := &tfprovider.StringMap{}
+	sm := &kresource.StringMap{}
 	sm.SetBase64Encoded(false)
 
-	err := sm.AddFileModel(dmm.Filenames)
+	err := dmm.Filenames.AddToStringMap(sm)
 	if err != nil {
 		return err
 	}
@@ -85,8 +86,8 @@ func (dmm *ConfigMapModel) FromManifest(manifest *unstructured.Unstructured) err
 	dmm.OutputMetadata.FromManifest(manifest)
 	return nil
 }
-func (dmm *ConfigMapModel) GetApiOptions() *tfprovider.APIOptions {
-	return dmm.ApiOptions
+func (dmm *ConfigMapModel) GetApiOptions() *kresource.APIOptions {
+	return dmm.ApiOptions.Options()
 }
 func (dmm *ConfigMapModel) GetResouceKey() (kresource.Key, error) {
 	return kresource.Key{
@@ -108,8 +109,9 @@ func (r *KubernetesConfigMap) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
-			"api_options": tfprovider.ApiOptionsModelSchema(),
-			"file_data":   tfprovider.DefineFileListSchema(false),
+			"api_options":      tfprovider.ApiOptionsModelSchema(),
+			"file_data":        tfprovider.DefineFileListSchema(false),
+			"binary_file_data": tfprovider.DefineFileListSchema(false),
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Data to store in the configmap",
 				ElementType:         types.StringType,
@@ -144,23 +146,33 @@ func (r *KubernetesConfigMap) Configure(ctx context.Context, req resource.Config
 	if req.ProviderData == nil {
 		return
 	}
-	r.resourceBase = tfprovider.NewCommonHandler[*ConfigMapModel](ctx, req, resp)
+	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
+		return
+	}
+	r.Provider = provider
 }
 
 func (r *KubernetesConfigMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	r.resourceBase.Create(ctx, req, resp)
+	plan := &ConfigMapModel{}
+	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
 func (r *KubernetesConfigMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	r.resourceBase.Read(ctx, req, resp)
+	plan := &ConfigMapModel{}
+	state := &ConfigMapModel{}
+	r.ResourceBase.Read(ctx, plan, state, req, resp)
 }
 
 func (r *KubernetesConfigMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	r.resourceBase.Update(ctx, req, resp)
+	plan := &ConfigMapModel{}
+	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
 func (r *KubernetesConfigMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	r.resourceBase.Delete(ctx, req, resp)
+	state := &ConfigMapModel{}
+	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
 func (r *KubernetesConfigMap) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

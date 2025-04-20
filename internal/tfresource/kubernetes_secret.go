@@ -31,28 +31,29 @@ func init() {
 
 // KubernetesSecret defines the resource implementation.
 type KubernetesSecret struct {
-	resourceBase     *tfprovider.BaseResourceHandler[*SecretModel]
+	tfprovider.ResourceBase[*SecretModel]
 	tfTypeNameSuffix string
 }
 
 // SecretModel describes the resource data model.
 type SecretModel struct {
-	Type       types.String           `tfsdk:"type"`
-	MetaData   kresource.MetaData     `tfsdk:"metadata"`
-	Immutable  types.Bool             `tfsdk:"immutable"`
-	Filenames  *tfprovider.FilesModel `tfsdk:"file_data"`
-	Data       types.Map              `tfsdk:"data"`
-	TextData   types.Map              `tfsdk:"text_data"`
-	ApiOptions *tfprovider.APIOptions `tfsdk:"api_options"`
+	Type          types.String                `tfsdk:"type"`
+	MetaData      kresource.MetaData          `tfsdk:"metadata"`
+	Immutable     types.Bool                  `tfsdk:"immutable"`
+	Filenames     *tfprovider.FilesModel      `tfsdk:"file_data"`
+	TextFilenames *tfprovider.FilesModel      `tfsdk:"text_file_data"`
+	Data          types.Map                   `tfsdk:"data"`
+	TextData      types.Map                   `tfsdk:"text_data"`
+	ApiOptions    *tfprovider.APIOptionsModel `tfsdk:"api_options"`
 
 	tfprovider.OutputMetadata
 }
 
 func (dmm *SecretModel) BuildManifest(manifest *unstructured.Unstructured) error {
-	sm := &tfprovider.StringMap{}
+	sm := &kresource.StringMap{}
 	sm.SetBase64Encoded(true)
 
-	err := sm.AddFileModel(dmm.Filenames)
+	err := dmm.Filenames.AddToStringMap(sm)
 	if err != nil {
 		return err
 	}
@@ -101,8 +102,8 @@ func (dmm *SecretModel) GetResouceKey() (kresource.Key, error) {
 	}, nil
 }
 
-func (dmm *SecretModel) GetApiOptions() *tfprovider.APIOptions {
-	return dmm.ApiOptions
+func (dmm *SecretModel) GetApiOptions() *kresource.APIOptions {
+	return dmm.ApiOptions.Options()
 }
 
 func (r *KubernetesSecret) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -117,7 +118,8 @@ func (r *KubernetesSecret) Schema(ctx context.Context, req resource.SchemaReques
 				MarkdownDescription: "If true, the data cannot be updated",
 				Optional:            true,
 			},
-			"file_data": tfprovider.DefineFileListSchema(false),
+			"file_data":      tfprovider.DefineFileListSchema(false),
+			"text_file_data": tfprovider.DefineFileListSchema(false),
 			"data": schema.MapAttribute{
 				MarkdownDescription: "Base64 encoded data to store in the secret",
 				ElementType:         types.StringType,
@@ -158,24 +160,33 @@ func (r *KubernetesSecret) Configure(ctx context.Context, req resource.Configure
 	if req.ProviderData == nil {
 		return
 	}
-
-	r.resourceBase = tfprovider.NewCommonHandler[*SecretModel](ctx, req, resp)
+	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
+		return
+	}
+	r.Provider = provider
 }
 
 func (r *KubernetesSecret) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	r.resourceBase.Create(ctx, req, resp)
+	plan := &SecretModel{}
+	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
 func (r *KubernetesSecret) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	r.resourceBase.Read(ctx, req, resp)
+	plan := &SecretModel{}
+	state := &SecretModel{}
+	r.ResourceBase.Read(ctx, plan, state, req, resp)
 }
 
 func (r *KubernetesSecret) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	r.resourceBase.Update(ctx, req, resp)
+	plan := &SecretModel{}
+	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
 func (r *KubernetesSecret) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	r.resourceBase.Delete(ctx, req, resp)
+	state := &SecretModel{}
+	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
 func (r *KubernetesSecret) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
