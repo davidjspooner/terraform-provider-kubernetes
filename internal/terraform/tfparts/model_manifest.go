@@ -1,7 +1,7 @@
 package tfparts
 
 import (
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -14,7 +14,7 @@ type ManifestModel struct {
 
 // ReadManifest reads manifest text and returns a Manifest object.
 func ReadManifest(text string) (*ManifestModel, error) {
-	u, err := kresource.ParseSingleYamlManifest(text)
+	u, err := kube.ParseSingleYamlManifest(text)
 	if err != nil {
 		return nil, err
 	}

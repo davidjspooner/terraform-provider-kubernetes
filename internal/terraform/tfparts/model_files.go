@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -45,7 +45,7 @@ func DefineFileListSchema(required bool) schema.Attribute {
 	return result
 }
 
-func (fm *FilesModel) AddToStringMap(sm *kresource.StringMap) error {
+func (fm *FilesModel) AddToStringMap(sm *kube.StringMap) error {
 	if fm == nil {
 		return nil
 	}
@@ -90,7 +90,7 @@ func (fm *FilesModel) AddToStringMap(sm *kresource.StringMap) error {
 	return nil
 }
 
-func AddMapsToStringMap(sm *kresource.StringMap, textData, base64Data *types.Map) error {
+func AddMapsToStringMap(sm *kube.StringMap, textData, base64Data *types.Map) error {
 	var err error
 	if sm == nil {
 		return fmt.Errorf("StringMap is nil")

@@ -3,7 +3,7 @@ package tfparts
 import (
 	"fmt"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -73,11 +73,11 @@ func FetchDatasourceAttributes(required bool) map[string]dschema.Attribute {
 	}
 }
 
-func (w *FetchMap) Compile() (*kresource.CompiledFetchMap, error) {
+func (w *FetchMap) Compile() (*kube.CompiledFetchMap, error) {
 	if w == nil {
 		return nil, nil
 	}
-	compiled := kresource.CompiledFetchMap{}
+	compiled := kube.CompiledFetchMap{}
 	for key, value := range w.Fetch.Elements() {
 		object, ok := value.(basetypes.ObjectValue)
 		if !ok {

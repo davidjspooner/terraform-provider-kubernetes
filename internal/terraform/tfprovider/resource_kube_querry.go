@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,20 +17,20 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &KubernetesWatch{}
+var _ resource.Resource = &ResourceKubeQuery{}
 
 func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
-		r := &KubernetesWatch{
+		r := &ResourceKubeQuery{
 			tfTypeNameSuffix: "_watch",
 		}
 		return r
 	})
 }
 
-// KubernetesWatch defines the resource implementation.
-type KubernetesWatch struct {
+// ResourceKubeQuery defines the resource implementation.
+type ResourceKubeQuery struct {
 	ResourceBase[*WatchModel]
 	tfTypeNameSuffix string
 }
@@ -55,18 +55,18 @@ func (model *WatchModel) UpdateFrom(manifest unstructured.Unstructured) error {
 	return nil
 }
 
-func (model *WatchModel) GetResouceKey() (kresource.ResourceKey, error) {
+func (model *WatchModel) GetResouceKey() (kube.ResourceKey, error) {
 	if model.Metadata == nil {
-		return kresource.ResourceKey{}, fmt.Errorf("metadata is nil")
+		return kube.ResourceKey{}, fmt.Errorf("metadata is nil")
 	}
 	if model.Metadata.Name.IsNull() {
-		return kresource.ResourceKey{}, fmt.Errorf("name is nil")
+		return kube.ResourceKey{}, fmt.Errorf("name is nil")
 	}
 	if model.Kind.IsNull() {
-		return kresource.ResourceKey{}, fmt.Errorf("kind is nil")
+		return kube.ResourceKey{}, fmt.Errorf("kind is nil")
 	}
 	if model.ApiVersion.IsNull() {
-		return kresource.ResourceKey{}, fmt.Errorf("api_version is nil")
+		return kube.ResourceKey{}, fmt.Errorf("api_version is nil")
 	}
 	var namespace *string
 	if model.Metadata.Namespace.IsNull() {
@@ -75,7 +75,7 @@ func (model *WatchModel) GetResouceKey() (kresource.ResourceKey, error) {
 		s := model.Metadata.Namespace.ValueString()
 		namespace = &s
 	}
-	k := kresource.ResourceKey{
+	k := kube.ResourceKey{
 		Kind:       model.Kind.ValueString(),
 		ApiVersion: model.ApiVersion.ValueString(),
 	}
@@ -84,11 +84,11 @@ func (model *WatchModel) GetResouceKey() (kresource.ResourceKey, error) {
 	return k, nil
 }
 
-func (r *KubernetesWatch) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ResourceKubeQuery) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
-func (r *KubernetesWatch) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceKubeQuery) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	attr := map[string]schema.Attribute{
 		"state": schema.StringAttribute{
 			MarkdownDescription: "used to trick Terraform into thinking the resource has changed",
@@ -121,12 +121,12 @@ func (r *KubernetesWatch) Schema(ctx context.Context, req resource.SchemaRequest
 	}
 }
 
-func (r *KubernetesWatch) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ResourceKubeQuery) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	r.ResourceBase.Configure(ctx, req, resp)
 }
 
-func (r *KubernetesWatch) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceKubeQuery) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data WatchModel
 
 	// Read Terraform plan data into the model
@@ -140,7 +140,7 @@ func (r *KubernetesWatch) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *KubernetesWatch) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceKubeQuery) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var state WatchModel
 
 	// Read Terraform prior state data into the model
@@ -164,7 +164,7 @@ func (r *KubernetesWatch) Read(ctx context.Context, req resource.ReadRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *KubernetesWatch) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceKubeQuery) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data WatchModel
 
 	// Read Terraform plan data into the model
@@ -179,7 +179,7 @@ func (r *KubernetesWatch) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *KubernetesWatch) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceKubeQuery) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	//effectily a no-op - we just reset the state vars
 	resp.State.RemoveResource(ctx)
 }

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -23,19 +23,19 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ datasource.DataSource = &FileManifests{}
+var _ datasource.DataSource = &DataSourceKubeManifestFiles{}
 
 func init() {
 	// Register the data source with the provider.
 	RegisterDataSource(func() datasource.DataSource {
-		return &FileManifests{
+		return &DataSourceKubeManifestFiles{
 			tfTypeNameSuffix: "_manifest_files",
 		}
 	})
 }
 
-// FileManifests defines the resource implementation.
-type FileManifests struct {
+// DataSourceKubeManifestFiles defines the resource implementation.
+type DataSourceKubeManifestFiles struct {
 	provider         *KubernetesResourceProvider
 	tfTypeNameSuffix string
 }
@@ -53,11 +53,11 @@ type FileManifestsModel struct {
 	Manifests types.Map          `tfsdk:"manifests"`
 }
 
-func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+func (r *DataSourceKubeManifestFiles) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
-func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (r *DataSourceKubeManifestFiles) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Read yaml from a list of files and return all the inner manifests",
@@ -92,7 +92,7 @@ func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest
 	}
 }
 
-func (r *FileManifests) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *DataSourceKubeManifestFiles) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -116,7 +116,7 @@ type manifestWithLineNumber struct {
 	manifest   string
 }
 
-func (r *FileManifests) readManifestsFromReader(_ context.Context, reader io.Reader, _ *FileManifestsModel) []manifestWithLineNumber {
+func (r *DataSourceKubeManifestFiles) readManifestsFromReader(_ context.Context, reader io.Reader, _ *FileManifestsModel) []manifestWithLineNumber {
 	scanner := bufio.NewScanner(reader)
 	var manifest bytes.Buffer
 	var manifests []manifestWithLineNumber
@@ -146,7 +146,7 @@ func (r *FileManifests) readManifestsFromReader(_ context.Context, reader io.Rea
 	return manifests
 }
 
-func (r *FileManifests) expandTemplate(templateString string, values map[string]string) (string, error) {
+func (r *DataSourceKubeManifestFiles) expandTemplate(templateString string, values map[string]string) (string, error) {
 	t := template.New("file")
 	t, err := t.Parse(templateString)
 	if err != nil {
@@ -160,12 +160,12 @@ func (r *FileManifests) expandTemplate(templateString string, values map[string]
 	return expanded.String(), nil
 }
 
-func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (r *DataSourceKubeManifestFiles) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var config FileManifestsModel
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
-	sm := &kresource.StringMap{}
+	sm := &kube.StringMap{}
 	config.FileNames.AddToStringMap(sm)
 
 	var values map[string]string

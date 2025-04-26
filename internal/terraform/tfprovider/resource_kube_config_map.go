@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
@@ -17,13 +17,13 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &KubernetesConfigMap{}
-var _ resource.ResourceWithImportState = &KubernetesConfigMap{}
+var _ resource.Resource = &ResourceKubeConfigMap{}
+var _ resource.ResourceWithImportState = &ResourceKubeConfigMap{}
 
 func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
-		r := &KubernetesConfigMap{}
+		r := &ResourceKubeConfigMap{}
 		r.tfTypeNameSuffix = "_config_map"
 		attr := map[string]schema.Attribute{
 			"immutable": schema.BoolAttribute{
@@ -62,8 +62,8 @@ func init() {
 	})
 }
 
-// KubernetesConfigMap defines the resource implementation.
-type KubernetesConfigMap struct {
+// ResourceKubeConfigMap defines the resource implementation.
+type ResourceKubeConfigMap struct {
 	ResourceBase[*ConfigMapModel]
 }
 
@@ -77,7 +77,7 @@ type ConfigMapModel struct {
 	Hashes     types.Map                `tfsdk:"hashes"`
 
 	tfparts.FetchMap
-	values kresource.StringMap
+	values kube.StringMap
 }
 
 func (model *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) error {
@@ -111,7 +111,7 @@ func (model *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) 
 	return nil
 }
 
-func GetHashes(sm *kresource.StringMap) types.Map {
+func GetHashes(sm *kube.StringMap) types.Map {
 	hashes := make(map[string]attr.Value)
 	if sm == nil {
 		return types.MapValueMust(types.StringType, hashes)
@@ -150,8 +150,8 @@ func (model *ConfigMapModel) UpdateFrom(manifest unstructured.Unstructured) erro
 	return nil
 }
 
-func (model *ConfigMapModel) GetResouceKey() (kresource.ResourceKey, error) {
-	k := kresource.ResourceKey{
+func (model *ConfigMapModel) GetResouceKey() (kube.ResourceKey, error) {
+	k := kube.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "ConfigMap",
 	}
@@ -162,38 +162,38 @@ func (model *ConfigMapModel) GetResouceKey() (kresource.ResourceKey, error) {
 	return k, nil
 }
 
-func (r *KubernetesConfigMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ResourceKubeConfigMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
-func (r *KubernetesConfigMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceKubeConfigMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = r.schema
 }
 
-func (r *KubernetesConfigMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ResourceKubeConfigMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	r.ResourceBase.Configure(ctx, req, resp)
 }
 
-func (r *KubernetesConfigMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceKubeConfigMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	plan := &ConfigMapModel{}
 	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
-func (r *KubernetesConfigMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceKubeConfigMap) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	state := &ConfigMapModel{}
 	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
-func (r *KubernetesConfigMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceKubeConfigMap) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	plan := &ConfigMapModel{}
 	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
-func (r *KubernetesConfigMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceKubeConfigMap) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	state := &ConfigMapModel{}
 	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
-func (r *KubernetesConfigMap) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *ResourceKubeConfigMap) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.AddError("Import not supported", "This resource does not support import")
 }

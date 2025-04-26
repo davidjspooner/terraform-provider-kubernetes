@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-type ResourceBase[implType kresource.StateInteraface] struct {
+type ResourceBase[implType kube.StateInteraface] struct {
 	Provider         *KubernetesResourceProvider
 	tfTypeNameSuffix string
 	schema           schema.Schema
@@ -32,10 +32,10 @@ func (h *ResourceBase[implType]) Configure(ctx context.Context, req resource.Con
 	}
 	h.Provider = provider
 }
-func (h *ResourceBase[implType]) NewResourceHelper(ctx context.Context, state implType) (*kresource.ResourceHelper, error) {
+func (h *ResourceBase[implType]) NewResourceHelper(ctx context.Context, state implType) (*kube.ResourceHelper, error) {
 
 	resourceOptions := GetPtrToEmbedddedType[tfparts.APIOptionsModel](state)
-	options, err := kresource.MergeAPIOptions(h.Provider.DefaultApiOptions, resourceOptions.Options())
+	options, err := kube.MergeAPIOptions(h.Provider.DefaultApiOptions, resourceOptions.Options())
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (h *ResourceBase[implType]) NewResourceHelper(ctx context.Context, state im
 	if err != nil {
 		return nil, err
 	}
-	resourceBase, err := kresource.NewResourceHelper(ctx, &h.Provider.Shared, options, key)
+	resourceBase, err := kube.NewResourceHelper(ctx, &h.Provider.Shared, options, key)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (h *ResourceBase[implType]) Create(ctx context.Context, plan implType, req 
 		resp.Diagnostics.AddError("Create failed", err.Error())
 		return
 	}
-	diags := h.Fetch(ctx, resourceBase, plan, kresource.MustExit)
+	diags := h.Fetch(ctx, resourceBase, plan, kube.MustExit)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -86,7 +86,7 @@ func (h *ResourceBase[implType]) Read(ctx context.Context, state implType, req r
 		return
 	}
 
-	diags := h.Fetch(ctx, resourceBase, state, kresource.MayOrMayNotExist)
+	diags := h.Fetch(ctx, resourceBase, state, kube.MayOrMayNotExist)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
@@ -95,7 +95,7 @@ func (h *ResourceBase[implType]) Read(ctx context.Context, state implType, req r
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
-func (h *ResourceBase[implType]) Fetch(ctx context.Context, resourceBase *kresource.ResourceHelper, state implType, existRequirement kresource.ExistRequirement) diag.Diagnostics {
+func (h *ResourceBase[implType]) Fetch(ctx context.Context, resourceBase *kube.ResourceHelper, state implType, existRequirement kube.ExistRequirement) diag.Diagnostics {
 	var diags diag.Diagnostics
 	fetch := GetPtrToEmbedddedType[tfparts.FetchMap](state)
 	compiledFetch, err := fetch.Compile()
@@ -138,7 +138,7 @@ func (h *ResourceBase[implType]) Update(ctx context.Context, plan implType, req 
 		resp.Diagnostics.AddError("Update failed", err.Error())
 		return
 	}
-	diags := h.Fetch(ctx, resourceBase, plan, kresource.MustExit)
+	diags := h.Fetch(ctx, resourceBase, plan, kube.MustExit)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return

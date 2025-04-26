@@ -2,7 +2,7 @@ package tfparts
 
 import (
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/job"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	pschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -78,11 +78,11 @@ func ApiOptionProviderAttributes() map[string]pschema.Attribute {
 	}
 }
 
-func (model *APIOptionsModel) Options() *kresource.APIClientOptions {
+func (model *APIOptionsModel) Options() *kube.APIClientOptions {
 	if model == nil {
 		return nil
 	}
-	opt := &kresource.APIClientOptions{
+	opt := &kube.APIClientOptions{
 		Retry: model.Retry,
 	}
 	if model.FieldManager != nil {

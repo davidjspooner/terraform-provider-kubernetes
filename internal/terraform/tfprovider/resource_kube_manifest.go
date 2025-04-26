@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/vpath"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,13 +18,13 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &KubernetesManifest{}
-var _ resource.ResourceWithImportState = &KubernetesManifest{}
+var _ resource.Resource = &ResourceKubeManifest{}
+var _ resource.ResourceWithImportState = &ResourceKubeManifest{}
 
 func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
-		r := KubernetesManifest{
+		r := ResourceKubeManifest{
 			tfTypeNameSuffix: "_manifest",
 		}
 		attr := map[string]schema.Attribute{
@@ -53,8 +53,8 @@ func init() {
 	})
 }
 
-// KubernetesManifest defines the resource implementation.
-type KubernetesManifest struct {
+// ResourceKubeManifest defines the resource implementation.
+type ResourceKubeManifest struct {
 	ResourceBase[*ManifestResourceModel]
 	tfTypeNameSuffix string
 }
@@ -71,7 +71,7 @@ type ManifestResourceModel struct {
 func (model *ManifestResourceModel) BuildManifest(manifest *unstructured.Unstructured) error {
 	manifestStr := model.ManifestString.ValueString()
 	var err error
-	*manifest, err = kresource.ParseSingleYamlManifest(manifestStr)
+	*manifest, err = kube.ParseSingleYamlManifest(manifestStr)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			// This is a special case where the manifest is empty
@@ -84,7 +84,7 @@ func (model *ManifestResourceModel) BuildManifest(manifest *unstructured.Unstruc
 	return nil
 }
 func (model *ManifestResourceModel) UpdateFrom(manifest unstructured.Unstructured) error {
-	previousManifest, err := kresource.ParseSingleYamlManifest(model.ManifestString.ValueString())
+	previousManifest, err := kube.ParseSingleYamlManifest(model.ManifestString.ValueString())
 	if err != nil {
 		return err
 	}
@@ -118,18 +118,18 @@ func (model *ManifestResourceModel) UpdateFrom(manifest unstructured.Unstructure
 
 	return nil
 }
-func (model *ManifestResourceModel) GetResouceKey() (kresource.ResourceKey, error) {
-	manifest, err := kresource.ParseSingleYamlManifest(model.ManifestString.ValueString())
+func (model *ManifestResourceModel) GetResouceKey() (kube.ResourceKey, error) {
+	manifest, err := kube.ParseSingleYamlManifest(model.ManifestString.ValueString())
 	if err != nil {
-		return kresource.ResourceKey{}, nil
+		return kube.ResourceKey{}, nil
 	}
 
 	namespace := manifest.GetNamespace()
 	name := manifest.GetName()
 	if name == "" {
-		return kresource.ResourceKey{}, fmt.Errorf("name is empty")
+		return kube.ResourceKey{}, fmt.Errorf("name is empty")
 	}
-	k := kresource.ResourceKey{
+	k := kube.ResourceKey{
 		ApiVersion: manifest.GetAPIVersion(),
 		Kind:       manifest.GetKind(),
 	}
@@ -140,38 +140,38 @@ func (model *ManifestResourceModel) GetResouceKey() (kresource.ResourceKey, erro
 	return k, nil
 }
 
-func (r *KubernetesManifest) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ResourceKubeManifest) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
-func (r *KubernetesManifest) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceKubeManifest) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = r.schema
 }
 
-func (r *KubernetesManifest) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ResourceKubeManifest) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	r.ResourceBase.Configure(ctx, req, resp)
 }
 
-func (r *KubernetesManifest) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceKubeManifest) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	plan := &ManifestResourceModel{}
 	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
-func (r *KubernetesManifest) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceKubeManifest) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	state := &ManifestResourceModel{}
 	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
-func (r *KubernetesManifest) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceKubeManifest) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	plan := &ManifestResourceModel{}
 	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
-func (r *KubernetesManifest) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceKubeManifest) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	state := &ManifestResourceModel{}
 	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
-func (r *KubernetesManifest) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *ResourceKubeManifest) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.AddError("Import not supported", "This resource does not support import")
 }

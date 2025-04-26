@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -88,7 +88,7 @@ type SecretModel struct {
 	Hashes        types.Map                `tfsdk:"hashes"`
 
 	tfparts.FetchMap
-	values kresource.StringMap
+	values kube.StringMap
 }
 
 func (model *SecretModel) BuildManifest(manifest *unstructured.Unstructured) error {
@@ -159,8 +159,8 @@ func (model *SecretModel) UpdateFrom(manifest unstructured.Unstructured) error {
 	return nil
 }
 
-func (model *SecretModel) GetResouceKey() (kresource.ResourceKey, error) {
-	k := kresource.ResourceKey{
+func (model *SecretModel) GetResouceKey() (kube.ResourceKey, error) {
+	k := kube.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "Secret",
 	}

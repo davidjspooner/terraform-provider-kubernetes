@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/job"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -28,8 +28,8 @@ type KubernetesResourceProvider struct {
 
 	version string
 
-	Shared            kresource.APIClientWrapper
-	DefaultApiOptions *kresource.APIClientOptions
+	Shared            kube.APIClientWrapper
+	DefaultApiOptions *kube.APIClientOptions
 }
 
 // KubernetesProviderModel describes the provider data model.
@@ -43,7 +43,7 @@ type KubernetesProviderModel struct {
 }
 
 func (p *KubernetesResourceProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "kubernetes"
+	resp.TypeName = "kube"
 	resp.Version = p.version
 }
 
@@ -119,7 +119,7 @@ func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider
 	}
 	//TODO set more setDefaults
 
-	p.DefaultApiOptions, err = kresource.MergeAPIOptions(defaultDefaults.Options(), data.DefaultApiOptions.Options())
+	p.DefaultApiOptions, err = kube.MergeAPIOptions(defaultDefaults.Options(), data.DefaultApiOptions.Options())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to initialize provider api options", err.Error())
@@ -167,6 +167,10 @@ func (p *KubernetesResourceProvider) Functions(ctx context.Context) []func() fun
 	lock.Lock()
 	defer lock.Unlock()
 	return supportedFunctions
+}
+
+func init() {
+	RegisterFunction(NewFunctionKubeParseTemplateFiles)
 }
 
 func NewProvider(version string) func() provider.Provider {

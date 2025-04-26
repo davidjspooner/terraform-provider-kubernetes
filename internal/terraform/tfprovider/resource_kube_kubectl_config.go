@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -13,20 +13,20 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &Config{}
-var _ resource.ResourceWithImportState = &Config{}
+var _ resource.Resource = &ResourceKubeConfig{}
+var _ resource.ResourceWithImportState = &ResourceKubeConfig{}
 
 func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
-		return &Config{
+		return &ResourceKubeConfig{
 			tfTypeNameSuffix: "_kubectl_config",
 		}
 	})
 }
 
-// Config defines the resource implementation.
-type Config struct {
+// ResourceKubeConfig defines the resource implementation.
+type ResourceKubeConfig struct {
 	provider         *KubernetesResourceProvider
 	tfTypeNameSuffix string
 }
@@ -39,11 +39,11 @@ type ConfigModel struct {
 	TargetFilename types.String `tfsdk:"target_filename"`
 }
 
-func (r *Config) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ResourceKubeConfig) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
 }
 
-func (r *Config) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceKubeConfig) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Merges a Kubernetes cluster configuration file into another configuration file.",
@@ -69,7 +69,7 @@ func (r *Config) Schema(ctx context.Context, req resource.SchemaRequest, resp *r
 	}
 }
 
-func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ResourceKubeConfig) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -88,8 +88,8 @@ func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, r
 	}
 }
 
-func (r *Config) createOrUpdate(ctx context.Context, data *ConfigModel) error {
-	pair := kresource.K8sConfigPair{}
+func (r *ResourceKubeConfig) createOrUpdate(ctx context.Context, data *ConfigModel) error {
+	pair := kube.K8sConfigPair{}
 	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()
 	pair.LoadConfigs(source_filename, target_filename)
@@ -115,7 +115,7 @@ func (r *Config) createOrUpdate(ctx context.Context, data *ConfigModel) error {
 	return nil
 }
 
-func (r *Config) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceKubeConfig) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data ConfigModel
 
 	// Read Terraform plan data into the model
@@ -136,11 +136,11 @@ func (r *Config) Create(ctx context.Context, req resource.CreateRequest, resp *r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *Config) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceKubeConfig) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	resp.State.RemoveResource(ctx) //always recreate just in case
 }
 
-func (r *Config) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceKubeConfig) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data ConfigModel
 
 	// Read Terraform plan data into the model
@@ -165,7 +165,7 @@ func (r *Config) Update(ctx context.Context, req resource.UpdateRequest, resp *r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *Config) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceKubeConfig) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data ConfigModel
 
 	// Read Terraform prior state data into the model
@@ -174,7 +174,7 @@ func (r *Config) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	pair := kresource.K8sConfigPair{}
+	pair := kube.K8sConfigPair{}
 
 	source_filename := data.SourceFilename.ValueString()
 	target_filename := data.TargetFilename.ValueString()
@@ -189,6 +189,6 @@ func (r *Config) Delete(ctx context.Context, req resource.DeleteRequest, resp *r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *Config) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *ResourceKubeConfig) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
