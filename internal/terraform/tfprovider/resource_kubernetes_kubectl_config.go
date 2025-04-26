@@ -1,14 +1,10 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
-package tfresource
+package tfprovider
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -22,7 +18,7 @@ var _ resource.ResourceWithImportState = &Config{}
 
 func init() {
 	// Register the resource with the provider.
-	tfprovider.RegisterResource(func() resource.Resource {
+	RegisterResource(func() resource.Resource {
 		return &Config{
 			tfTypeNameSuffix: "_kubectl_config",
 		}
@@ -31,7 +27,7 @@ func init() {
 
 // Config defines the resource implementation.
 type Config struct {
-	provider         *tfprovider.KubernetesResourceProvider
+	provider         *KubernetesResourceProvider
 	tfTypeNameSuffix string
 }
 
@@ -80,7 +76,7 @@ func (r *Config) Configure(ctx context.Context, req resource.ConfigureRequest, r
 	}
 
 	var ok bool
-	r.provider, ok = req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	r.provider, ok = req.ProviderData.(*KubernetesResourceProvider)
 
 	if !ok {
 		resp.Diagnostics.AddError(

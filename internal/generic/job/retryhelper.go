@@ -34,8 +34,6 @@ func (rh *RetryHelper) SetDefaults() {
 
 func (rh *RetryHelper) Retry(ctx context.Context, fn func(ctx context.Context, attempt int) error) error {
 
-	rh.SetDefaults()
-
 	//tflog.Info(ctx, "waiting", map[string]any{"duration": d.String()}) //TODO add some form of dependancy logging
 	Sleep(ctx, rh.Pause)
 

@@ -1,7 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
-package tfdatasource
+package tfprovider
 
 import (
 	"bufio"
@@ -13,8 +10,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -30,7 +27,7 @@ var _ datasource.DataSource = &FileManifests{}
 
 func init() {
 	// Register the data source with the provider.
-	tfprovider.RegisterDataSource(func() datasource.DataSource {
+	RegisterDataSource(func() datasource.DataSource {
 		return &FileManifests{
 			tfTypeNameSuffix: "_manifest_files",
 		}
@@ -39,7 +36,7 @@ func init() {
 
 // FileManifests defines the resource implementation.
 type FileManifests struct {
-	provider         *tfprovider.KubernetesResourceProvider
+	provider         *KubernetesResourceProvider
 	tfTypeNameSuffix string
 }
 
@@ -52,8 +49,8 @@ var ManifestType = map[string]attr.Type{
 
 // FileManifestsModel describes the resource data tfshared.
 type FileManifestsModel struct {
-	FileNames tfprovider.FilesModel `tfsdk:"file_data"`
-	Manifests types.Map             `tfsdk:"manifests"`
+	FileNames tfparts.FilesModel `tfsdk:"file_data"`
+	Manifests types.Map          `tfsdk:"manifests"`
 }
 
 func (r *FileManifests) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -66,7 +63,7 @@ func (r *FileManifests) Schema(ctx context.Context, req datasource.SchemaRequest
 		MarkdownDescription: "Read yaml from a list of files and return all the inner manifests",
 
 		Attributes: map[string]schema.Attribute{
-			"file_data": tfprovider.DefineFileListSchema(true),
+			"file_data": tfparts.DefineFileListSchema(true),
 			"manifests": schema.MapNestedAttribute{
 				MarkdownDescription: "A Kubernetes manifest. This resource manages the lifecycle of a Kubernetes manifest.",
 				NestedObject: schema.NestedAttributeObject{
@@ -102,7 +99,7 @@ func (r *FileManifests) Configure(ctx context.Context, req resource.ConfigureReq
 	}
 
 	var ok bool
-	r.provider, ok = req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	r.provider, ok = req.ProviderData.(*KubernetesResourceProvider)
 
 	if !ok {
 		resp.Diagnostics.AddError(
@@ -196,7 +193,7 @@ func (r *FileManifests) Read(ctx context.Context, req datasource.ReadRequest, re
 			manifests := r.readManifestsFromReader(ctx, sr, &config)
 			for _, manifestWithLineNumber := range manifests {
 
-				manifest, err := tfprovider.ReadManifest(manifestWithLineNumber.manifest)
+				manifest, err := tfparts.ReadManifest(manifestWithLineNumber.manifest)
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
 						resp.Diagnostics.AddError(

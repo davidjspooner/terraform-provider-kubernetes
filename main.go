@@ -10,10 +10,8 @@ import (
 	"log"
 	"os"
 
-	_ "github.com/davidjspooner/terraform-provider-kubernetes/internal/tfdatasource"
-	_ "github.com/davidjspooner/terraform-provider-kubernetes/internal/tfresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfprovider"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 

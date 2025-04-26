@@ -1,14 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
 package tfprovider
 
 import (
 	"context"
 	"sync"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/job"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
@@ -36,12 +34,12 @@ type KubernetesResourceProvider struct {
 
 // KubernetesProviderModel describes the provider data model.
 type KubernetesProviderModel struct {
-	ConfigPaths           []types.String   `tfsdk:"config_paths"`
-	ConfigContext         types.String     `tfsdk:"config_context"`
-	ConfigContextAuthInfo types.String     `tfsdk:"config_context_auth_info"`
-	ConfigContextCluster  types.String     `tfsdk:"config_context_cluster"`
-	Namespace             types.String     `tfsdk:"namespace"`
-	DefaultApiOptions     *APIOptionsModel `tfsdk:"api_options"`
+	ConfigPaths           []types.String           `tfsdk:"config_paths"`
+	ConfigContext         types.String             `tfsdk:"config_context"`
+	ConfigContextAuthInfo types.String             `tfsdk:"config_context_auth_info"`
+	ConfigContextCluster  types.String             `tfsdk:"config_context_cluster"`
+	Namespace             types.String             `tfsdk:"namespace"`
+	DefaultApiOptions     *tfparts.APIOptionsModel `tfsdk:"api_options"`
 }
 
 func (p *KubernetesResourceProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -50,32 +48,45 @@ func (p *KubernetesResourceProvider) Metadata(ctx context.Context, req provider.
 }
 
 func (p *KubernetesResourceProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Attributes: map[string]schema.Attribute{
-			"config_paths": schema.ListAttribute{
-				ElementType: types.StringType,
-				Description: "A list of paths to kube config files. Can be set with KUBE_CONFIG_PATHS environment variable. Default is [\"$KUBECONFIG\", \"$HOME/.kube/config\"]",
-				Optional:    true,
-			},
-			"config_context_cluster": schema.StringAttribute{
-				Description: "Override the current context cluster in kubeconfig",
-				Optional:    true,
-			},
-			"config_context": schema.StringAttribute{
-				Description: "Override the current context in kubeconfig",
-				Optional:    true,
-			},
-			"config_context_auth_info": schema.StringAttribute{
-				Description: "Override the current context auth info in kubeconfig",
-				Optional:    true,
-			},
-			"namespace": schema.StringAttribute{
-				Description: "Default namespace to use",
-				Optional:    true,
-			},
-			"api_options": ApiOptionsModelSchema(),
+	attr := map[string]schema.Attribute{
+		"config_paths": schema.ListAttribute{
+			ElementType: types.StringType,
+			Description: "A list of paths to kube config files. Can be set with KUBE_CONFIG_PATHS environment variable. Default is [\"$KUBECONFIG\", \"$HOME/.kube/config\"]",
+			Optional:    true,
+		},
+		"config_context_cluster": schema.StringAttribute{
+			Description: "Override the current context cluster in kubeconfig",
+			Optional:    true,
+		},
+		"config_context": schema.StringAttribute{
+			Description: "Override the current context in kubeconfig",
+			Optional:    true,
+		},
+		"config_context_auth_info": schema.StringAttribute{
+			Description: "Override the current context auth info in kubeconfig",
+			Optional:    true,
+		},
+		"namespace": schema.StringAttribute{
+			Description: "Default namespace to use",
+			Optional:    true,
 		},
 	}
+	resp.Schema = schema.Schema{
+		Attributes: MergeProviderAttributes(
+			attr,
+			tfparts.ApiOptionProviderAttributes(),
+		),
+	}
+}
+
+func MergeProviderAttributes(attrs ...map[string]schema.Attribute) map[string]schema.Attribute {
+	merged := make(map[string]schema.Attribute)
+	for _, attr := range attrs {
+		for k, v := range attr {
+			merged[k] = v
+		}
+	}
+	return merged
 }
 
 func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
@@ -99,11 +110,11 @@ func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider
 	p.Shared.SetNamespace(data.Namespace.ValueString())
 
 	if data.DefaultApiOptions != nil {
-		data.DefaultApiOptions = &APIOptionsModel{}
+		data.DefaultApiOptions = &tfparts.APIOptionsModel{}
 	}
 
 	var err error
-	defaultDefaults := &APIOptionsModel{
+	defaultDefaults := &tfparts.APIOptionsModel{
 		Retry: &job.RetryModel{},
 	}
 	//TODO set more setDefaults

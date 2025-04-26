@@ -8,9 +8,12 @@ import (
 )
 
 type ResourceKey struct {
-	ApiVersion string           `yaml:"apiVersion"`
-	Kind       string           `yaml:"kind"`
-	MetaData   ResourceMetaData `yaml:"metadata"`
+	ApiVersion string `yaml:"apiVersion"`
+	Kind       string `yaml:"kind"`
+	MetaData   struct {
+		Name      string  `yaml:"name"`
+		Namespace *string `yaml:"namespace,omitempty"`
+	} `yaml:"metadata"`
 }
 
 func (key *ResourceKey) String() string {

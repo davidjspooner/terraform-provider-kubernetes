@@ -69,5 +69,5 @@ uploads:
     checksum: true
     signature: true
 publishers:
-  - name: tfprovider publisher
+  - name: parts publisher
     cmd: publish.sh

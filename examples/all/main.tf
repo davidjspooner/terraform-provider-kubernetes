@@ -11,8 +11,8 @@ provider "kubernetes" {
   
 }
 
-resource "kubernetes_resource" "test_namespace" {
-    manifest = <<__EOF__
+resource "kubernetes_manifest" "test_namespace" {
+    manifest_content = <<__EOF__
         apiVersion: v1
         kind: Namespace
         metadata:
@@ -21,21 +21,66 @@ resource "kubernetes_resource" "test_namespace" {
 }
 
 
-resource "kubernetes_resource" "test_deployment" {
-    depends_on = [kubernetes_resource.test_namespace]
+resource "kubernetes_manifest" "test_deployment" {
+    depends_on = [kubernetes_manifest.test_namespace]
 #    api_options = {
 #        retry = {
 #            timeout = "3m"
 #        }
 #    }
-    manifest = <<__EOF__
+    manifest = {
+        metadata = {
+            name = "test-deployment6"
+            namespace = "test5"
+        }
+        spec = {
+            replicas = 2
+            selector = {
+                matchLabels = {
+                    app = "test4"
+                }
+            }
+            template = {
+                metadata = {
+                    labels = {
+                        app = "test4"
+                    }
+                }
+                spec = {
+                    containers = [
+                        {
+                            name  = "test"
+                            image = "nginx"
+                            ports = [
+                                {
+                                    containerPort = 80
+                                }
+                            ]
+                        },
+                        {
+                            name  = "sidecar"
+                            image = "nginx"
+                        }
+                    ]
+                }
+            }
+        }
+    }
+
+    fetch= {
+        generation={
+            field = "metadata.generation"
+        }
+    }
+
+    manifest_content = <<__EOF__
         apiVersion: apps/v1
         kind: Deployment
         metadata:
             name: test-deployment
             namespace: test5
         spec:
-            replicas: 2
+            replicas: 1
             selector:
                 matchLabels:
                     app: test3
@@ -50,4 +95,8 @@ resource "kubernetes_resource" "test_deployment" {
                       ports:
                       - containerPort: 80
         __EOF__
+}
+
+output "generation" {
+  value = kubernetes_manifest.test_deployment.output.generation
 }

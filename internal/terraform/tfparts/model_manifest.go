@@ -1,7 +1,7 @@
-package tfprovider
+package tfparts
 
 import (
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 

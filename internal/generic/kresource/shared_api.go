@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/job"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/job"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

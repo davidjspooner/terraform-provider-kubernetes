@@ -1,15 +1,12 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
-package tfresource
+package tfprovider
 
 import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -25,29 +22,61 @@ var _ resource.ResourceWithImportState = &KubernetesConfigMap{}
 
 func init() {
 	// Register the resource with the provider.
-	tfprovider.RegisterResource(func() resource.Resource {
-		return &KubernetesConfigMap{
-			tfTypeNameSuffix: "_config_map",
+	RegisterResource(func() resource.Resource {
+		r := &KubernetesConfigMap{}
+		r.tfTypeNameSuffix = "_config_map"
+		attr := map[string]schema.Attribute{
+			"immutable": schema.BoolAttribute{
+				MarkdownDescription: "If true, the data cannot be updated",
+				Optional:            true,
+			},
+			"file_data": tfparts.DefineFileListSchema(false),
+			"data": schema.MapAttribute{
+				MarkdownDescription: "Data to store in the configmap",
+				ElementType:         types.StringType,
+				Optional:            true,
+			},
+			"binary_data": schema.MapAttribute{
+				MarkdownDescription: "Base64 encoded data to store in the configmap ( will be base64 decoded )",
+				ElementType:         types.StringType,
+				Optional:            true,
+			},
+			"hashes": schema.MapAttribute{
+				MarkdownDescription: "A map of hashes of the data in the secret",
+				ElementType:         types.StringType,
+				Computed:            true,
+			},
 		}
+		r.schema = schema.Schema{
+			Description: "A Kubernetes ConfigMap resource. This resource manages the lifecycle of a Kubernetes configmap.",
+			Attributes: MergeResourceAttributes(
+				attr,
+				tfparts.FetchRequestAttributes(),
+				tfparts.ApiOptionsResourceAttributes(),
+			),
+			Blocks: map[string]schema.Block{
+				"metadata": tfparts.LongMetadataSchemaBlock(),
+			},
+		}
+		return r
 	})
 }
 
 // KubernetesConfigMap defines the resource implementation.
 type KubernetesConfigMap struct {
-	tfTypeNameSuffix string
-	tfprovider.ResourceBase[*ConfigMapModel]
+	ResourceBase[*ConfigMapModel]
 }
 
 // ConfigMapModel describes the resource data model.
 type ConfigMapModel struct {
-	MetaData   kresource.ResourceMetaData  `tfsdk:"metadata"`
-	Immutable  types.Bool                  `tfsdk:"immutable"`
-	Files      *tfprovider.FilesModel      `tfsdk:"file_data"`
-	Data       types.Map                   `tfsdk:"data"`
-	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
-	Hashes     types.Map                   `tfsdk:"hashes"`
+	MetaData   tfparts.ResourceMetaData `tfsdk:"metadata"`
+	Immutable  types.Bool               `tfsdk:"immutable"`
+	Files      *tfparts.FilesModel      `tfsdk:"file_data"`
+	Data       types.Map                `tfsdk:"data"`
+	ApiOptions *tfparts.APIOptionsModel `tfsdk:"api_options"`
+	Hashes     types.Map                `tfsdk:"hashes"`
 
-	tfprovider.OutputMetadata
+	tfparts.FetchMap
 	values kresource.StringMap
 }
 
@@ -57,7 +86,7 @@ func (model *ConfigMapModel) BuildManifest(manifest *unstructured.Unstructured) 
 	if err != nil {
 		return err
 	}
-	err = tfprovider.AddMapsToStringMap(&model.values, &model.Data, nil)
+	err = tfparts.AddMapsToStringMap(&model.values, &model.Data, nil)
 	if err != nil {
 		return err
 	}
@@ -102,8 +131,7 @@ func GetHashes(sm *kresource.StringMap) types.Map {
 	return types.MapValueMust(types.StringType, hashes)
 }
 
-func (model *ConfigMapModel) FromManifest(manifest *unstructured.Unstructured) error {
-	model.OutputMetadata.FromManifest(manifest)
+func (model *ConfigMapModel) UpdateFrom(manifest unstructured.Unstructured) error {
 	model.values.Clear()
 	if manifest.Object["data"] != nil {
 		for k, v := range manifest.Object["data"].(map[string]interface{}) {
@@ -121,15 +149,17 @@ func (model *ConfigMapModel) FromManifest(manifest *unstructured.Unstructured) e
 
 	return nil
 }
-func (model *ConfigMapModel) GetApiOptions() *kresource.APIClientOptions {
-	return model.ApiOptions.Options()
-}
+
 func (model *ConfigMapModel) GetResouceKey() (kresource.ResourceKey, error) {
-	return kresource.ResourceKey{
+	k := kresource.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "ConfigMap",
-		MetaData:   model.MetaData,
-	}, nil
+	}
+	k.MetaData.Name = model.MetaData.Name
+	if model.MetaData.Namespace != nil {
+		k.MetaData.Namespace = model.MetaData.Namespace
+	}
+	return k, nil
 }
 
 func (r *KubernetesConfigMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -137,60 +167,11 @@ func (r *KubernetesConfigMap) Metadata(ctx context.Context, req resource.Metadat
 }
 
 func (r *KubernetesConfigMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "A Kubernetes ConfigMap resource. This resource manages the lifecycle of a Kubernetes configmap.",
-		Attributes: map[string]schema.Attribute{
-			"immutable": schema.BoolAttribute{
-				MarkdownDescription: "If true, the data cannot be updated",
-				Optional:            true,
-			},
-			"api_options": tfprovider.ApiOptionsModelSchema(),
-			"file_data":   tfprovider.DefineFileListSchema(false),
-			"data": schema.MapAttribute{
-				MarkdownDescription: "Data to store in the configmap",
-				ElementType:         types.StringType,
-				Optional:            true,
-			},
-			"binary_data": schema.MapAttribute{
-				MarkdownDescription: "Base64 encoded data to store in the configmap ( will be base64 decoded )",
-				ElementType:         types.StringType,
-				Optional:            true,
-			},
-			"resource_version": schema.StringAttribute{
-				MarkdownDescription: "The resource version.",
-				Computed:            true,
-			},
-			"uid": schema.StringAttribute{
-				MarkdownDescription: "The unique identifier of the resource.",
-				Computed:            true,
-			},
-			"generation": schema.Int64Attribute{
-				MarkdownDescription: "The generation of the resource.",
-				Computed:            true,
-			},
-			"hashes": schema.MapAttribute{
-				MarkdownDescription: "A map of hashes of the data in the secret",
-				ElementType:         types.StringType,
-				Computed:            true,
-			},
-		},
-		Blocks: map[string]schema.Block{
-			"metadata": tfprovider.LongMetadataSchemaBlock(),
-		},
-	}
+	resp.Schema = r.schema
 }
 
 func (r *KubernetesConfigMap) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
-	}
-	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
-		return
-	}
-	r.Provider = provider
+	r.ResourceBase.Configure(ctx, req, resp)
 }
 
 func (r *KubernetesConfigMap) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

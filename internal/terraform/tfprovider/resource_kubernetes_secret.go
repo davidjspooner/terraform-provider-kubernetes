@@ -1,7 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
-// SPDX-License-Identifier: MPL-2.0
-
-package tfresource
+package tfprovider
 
 import (
 	"context"
@@ -10,8 +7,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -24,32 +21,73 @@ var _ resource.ResourceWithImportState = &KubernetesSecret{}
 
 func init() {
 	// Register the resource with the provider.
-	tfprovider.RegisterResource(func() resource.Resource {
-		return &KubernetesSecret{
-			tfTypeNameSuffix: "_secret",
+	RegisterResource(func() resource.Resource {
+		ks := KubernetesSecret{}
+		ks.ResourceBase.tfTypeNameSuffix = "_secret"
+
+		attr := map[string]schema.Attribute{
+			"immutable": schema.BoolAttribute{
+				MarkdownDescription: "If true, the data cannot be updated",
+				Optional:            true,
+			},
+			"file_data":      tfparts.DefineFileListSchema(false),
+			"text_file_data": tfparts.DefineFileListSchema(false),
+			"data": schema.MapAttribute{
+				MarkdownDescription: "Base64 encoded data to store in the secret",
+				ElementType:         types.StringType,
+				Sensitive:           true,
+				Optional:            true,
+			},
+			"string_data": schema.MapAttribute{
+				MarkdownDescription: "Plain text data to store in the secret ( will be base64 encoded )",
+				ElementType:         types.StringType,
+				Sensitive:           true,
+				Optional:            true,
+			},
+			"type": schema.StringAttribute{
+				MarkdownDescription: "Type of the secret",
+				Optional:            true,
+				Computed:            true,
+			},
+			"hashes": schema.MapAttribute{
+				MarkdownDescription: "A map of hashes of the data in the secret",
+				ElementType:         types.StringType,
+				Computed:            true,
+			},
 		}
+		ks.ResourceBase.schema = schema.Schema{
+			Description: "A Kubernetes Secret resource. This resource manages the lifecycle of a Kubernetes Secret.",
+			Attributes: MergeResourceAttributes(
+				attr,
+				tfparts.FetchRequestAttributes(),
+				tfparts.ApiOptionsResourceAttributes(),
+			),
+			Blocks: map[string]schema.Block{
+				"metadata": tfparts.LongMetadataSchemaBlock(),
+			},
+		}
+		return &ks
 	})
 }
 
 // KubernetesSecret defines the resource implementation.
 type KubernetesSecret struct {
-	tfprovider.ResourceBase[*SecretModel]
-	tfTypeNameSuffix string
+	ResourceBase[*SecretModel]
 }
 
 // SecretModel describes the resource data model.
 type SecretModel struct {
-	Type          types.String                `tfsdk:"type"`
-	MetaData      kresource.ResourceMetaData  `tfsdk:"metadata"`
-	Immutable     types.Bool                  `tfsdk:"immutable"`
-	Filenames     *tfprovider.FilesModel      `tfsdk:"file_data"`
-	TextFilenames *tfprovider.FilesModel      `tfsdk:"text_file_data"`
-	Data          types.Map                   `tfsdk:"data"`
-	StringData    types.Map                   `tfsdk:"string_data"`
-	ApiOptions    *tfprovider.APIOptionsModel `tfsdk:"api_options"`
-	Hashes        types.Map                   `tfsdk:"hashes"`
+	Type          types.String             `tfsdk:"type"`
+	MetaData      tfparts.ResourceMetaData `tfsdk:"metadata"`
+	Immutable     types.Bool               `tfsdk:"immutable"`
+	Filenames     *tfparts.FilesModel      `tfsdk:"file_data"`
+	TextFilenames *tfparts.FilesModel      `tfsdk:"text_file_data"`
+	Data          types.Map                `tfsdk:"data"`
+	StringData    types.Map                `tfsdk:"string_data"`
+	ApiOptions    *tfparts.APIOptionsModel `tfsdk:"api_options"`
+	Hashes        types.Map                `tfsdk:"hashes"`
 
-	tfprovider.OutputMetadata
+	tfparts.FetchMap
 	values kresource.StringMap
 }
 
@@ -59,7 +97,7 @@ func (model *SecretModel) BuildManifest(manifest *unstructured.Unstructured) err
 	if err != nil {
 		return err
 	}
-	err = tfprovider.AddMapsToStringMap(&model.values, &model.StringData, &model.Data)
+	err = tfparts.AddMapsToStringMap(&model.values, &model.StringData, &model.Data)
 	if err != nil {
 		return err
 	}
@@ -90,11 +128,9 @@ func (model *SecretModel) BuildManifest(manifest *unstructured.Unstructured) err
 	return nil
 }
 
-func (model *SecretModel) FromManifest(manifest *unstructured.Unstructured) error {
-	//	model.MetaData.SetFromActual(actual)
+func (model *SecretModel) UpdateFrom(manifest unstructured.Unstructured) error {
 	s, _, _ := unstructured.NestedString(manifest.Object, "type")
 	model.Type = basetypes.NewStringValue(s)
-	model.OutputMetadata.FromManifest(manifest)
 	b, _, _ := unstructured.NestedBool(manifest.Object, "immutable")
 	model.Immutable = basetypes.NewBoolValue(b)
 
@@ -124,15 +160,15 @@ func (model *SecretModel) FromManifest(manifest *unstructured.Unstructured) erro
 }
 
 func (model *SecretModel) GetResouceKey() (kresource.ResourceKey, error) {
-	return kresource.ResourceKey{
+	k := kresource.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "Secret",
-		MetaData:   model.MetaData,
-	}, nil
-}
-
-func (model *SecretModel) GetApiOptions() *kresource.APIClientOptions {
-	return model.ApiOptions.Options()
+	}
+	k.MetaData.Name = model.MetaData.Name
+	if model.MetaData.Namespace != nil {
+		k.MetaData.Namespace = model.MetaData.Namespace
+	}
+	return k, nil
 }
 
 func (r *KubernetesSecret) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -140,68 +176,11 @@ func (r *KubernetesSecret) Metadata(ctx context.Context, req resource.MetadataRe
 }
 
 func (r *KubernetesSecret) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{
-		Description: "A Kubernetes Secret resource. This resource manages the lifecycle of a Kubernetes Secret.",
-		Attributes: map[string]schema.Attribute{
-			"immutable": schema.BoolAttribute{
-				MarkdownDescription: "If true, the data cannot be updated",
-				Optional:            true,
-			},
-			"file_data":      tfprovider.DefineFileListSchema(false),
-			"text_file_data": tfprovider.DefineFileListSchema(false),
-			"data": schema.MapAttribute{
-				MarkdownDescription: "Base64 encoded data to store in the secret",
-				ElementType:         types.StringType,
-				Sensitive:           true,
-				Optional:            true,
-			},
-			"string_data": schema.MapAttribute{
-				MarkdownDescription: "Plain text data to store in the secret ( will be base64 encoded )",
-				ElementType:         types.StringType,
-				Sensitive:           true,
-				Optional:            true,
-			},
-			"type": schema.StringAttribute{
-				MarkdownDescription: "Type of the secret",
-				Optional:            true,
-				Computed:            true,
-			},
-			"api_options": tfprovider.ApiOptionsModelSchema(),
-			"resource_version": schema.StringAttribute{
-				MarkdownDescription: "The resource version.",
-				Computed:            true,
-			},
-			"uid": schema.StringAttribute{
-				MarkdownDescription: "The unique identifier of the resource.",
-				Computed:            true,
-			},
-			"generation": schema.Int64Attribute{
-				MarkdownDescription: "The generation of the resource.",
-				Computed:            true,
-			},
-			"hashes": schema.MapAttribute{
-				MarkdownDescription: "A map of hashes of the data in the secret",
-				ElementType:         types.StringType,
-				Computed:            true,
-			},
-		},
-		Blocks: map[string]schema.Block{
-			"metadata": tfprovider.LongMetadataSchemaBlock(),
-		},
-	}
+	resp.Schema = r.schema
 }
 
 func (r *KubernetesSecret) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
-	}
-	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
-	if !ok {
-		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
-		return
-	}
-	r.Provider = provider
+	r.ResourceBase.Configure(ctx, req, resp)
 }
 
 func (r *KubernetesSecret) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

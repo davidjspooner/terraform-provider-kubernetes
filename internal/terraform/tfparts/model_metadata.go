@@ -1,10 +1,9 @@
-package tfprovider
+package tfparts
 
 import (
-	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type ShortMetadata struct {
@@ -59,30 +58,4 @@ func LongMetadataSchemaBlock() schema.SingleNestedBlock {
 		},
 	}
 	return s
-}
-
-type OutputMetadata struct {
-	ResourceVersion types.String `tfsdk:"resource_version"`
-	UID             types.String `tfsdk:"uid"`
-	Generation      types.Int64  `tfsdk:"generation"`
-}
-
-func (output *OutputMetadata) FromManifest(manifest *unstructured.Unstructured) {
-	s, found, err := unstructured.NestedString(manifest.Object, "metadata", "resourceVersion")
-	if err != nil || !found {
-		s = ""
-	}
-	output.ResourceVersion = basetypes.NewStringValue(s)
-
-	s, found, err = unstructured.NestedString(manifest.Object, "metadata", "uid")
-	if err != nil || !found {
-		s = ""
-	}
-	output.UID = basetypes.NewStringValue(s)
-
-	n, found, err := unstructured.NestedInt64(manifest.Object, "metadata", "generation")
-	if err != nil || !found {
-		n = 0
-	}
-	output.Generation = basetypes.NewInt64Value(n)
 }

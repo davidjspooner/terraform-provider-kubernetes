@@ -58,7 +58,15 @@ func (f Field) EvaluateFor(object interface{}) (interface{}, error) {
 			}
 		}
 	case reflect.Struct:
-		child := rObject.FieldByName(string(f)).Interface()
+		rf, b := rObject.Type().FieldByName(string(f))
+		if !b {
+			return nil, fmt.Errorf("cannot extract %q from %T", f, object)
+		}
+		childValue := rObject.FieldByIndex(rf.Index)
+		if !childValue.IsValid() {
+			return nil, fmt.Errorf("cannot extract %q from %T", f, object)
+		}
+		child := childValue.Interface()
 		return child, nil
 	}
 	return nil, fmt.Errorf("cannot extract %q from %T", f, object)

@@ -1,13 +1,13 @@
 // Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MPL-2.0
 
-package tfresource
+package tfprovider
 
 import (
 	"context"
 
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/kresource"
-	"github.com/davidjspooner/terraform-provider-kubernetes/internal/tfprovider"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kresource"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -20,7 +20,7 @@ var _ resource.ResourceWithImportState = &KubernetesNamespace{}
 
 func init() {
 	// Register the resource with the provider.
-	tfprovider.RegisterResource(func() resource.Resource {
+	RegisterResource(func() resource.Resource {
 		return &KubernetesNamespace{
 			tfTypeNameSuffix: "_namespace",
 		}
@@ -29,16 +29,16 @@ func init() {
 
 // KubernetesNamespace defines the resource implementation.
 type KubernetesNamespace struct {
-	tfprovider.ResourceBase[*NamespaceModel]
+	ResourceBase[*NamespaceModel]
 	tfTypeNameSuffix string
 }
 
 // NamespaceModel describes the resource data model.
 type NamespaceModel struct {
-	MetaData kresource.ResourceMetaData `tfsdk:"metadata"`
+	MetaData tfparts.ResourceMetaData `tfsdk:"metadata"`
 
-	ApiOptions *tfprovider.APIOptionsModel `tfsdk:"api_options"`
-	tfprovider.OutputMetadata
+	ApiOptions       *tfparts.APIOptionsModel `tfsdk:"api_options"`
+	tfparts.FetchMap `tfsdk:"output_metadata"`
 }
 
 func (model *NamespaceModel) BuildManifest(manifest *unstructured.Unstructured) error {
@@ -64,22 +64,18 @@ func (model *NamespaceModel) BuildManifest(manifest *unstructured.Unstructured) 
 	return nil
 }
 
-func (model *NamespaceModel) FromManifest(manifest *unstructured.Unstructured) error {
-	model.OutputMetadata.FromManifest(manifest)
-	model.MetaData.FromManifest(manifest)
+func (model *NamespaceModel) UpdateFrom(manifest unstructured.Unstructured) error {
+	model.MetaData.UpdateFrom(manifest)
 	return nil
 }
 
-func (model *NamespaceModel) GetApiOptions() *kresource.APIClientOptions {
-	return model.ApiOptions.Options()
-}
-
 func (model *NamespaceModel) GetResouceKey() (kresource.ResourceKey, error) {
-	return kresource.ResourceKey{
+	k := kresource.ResourceKey{
 		ApiVersion: "v1",
 		Kind:       "Namespace",
-		MetaData:   model.MetaData,
-	}, nil
+	}
+	k.MetaData.Name = model.MetaData.Name
+	return k, nil
 }
 
 func (r *KubernetesNamespace) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -87,25 +83,16 @@ func (r *KubernetesNamespace) Metadata(ctx context.Context, req resource.Metadat
 }
 
 func (r *KubernetesNamespace) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	attr := map[string]schema.Attribute{}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "A Kubernetes Namespace resource. This resource manages the lifecycle of a Kubernetes namespace.",
-		Attributes: map[string]schema.Attribute{
-			"api_options": tfprovider.ApiOptionsModelSchema(),
-			"resource_version": schema.StringAttribute{
-				MarkdownDescription: "The resource version.",
-				Computed:            true,
-			},
-			"uid": schema.StringAttribute{
-				MarkdownDescription: "The unique identifier of the resource.",
-				Computed:            true,
-			},
-			"generation": schema.Int64Attribute{
-				MarkdownDescription: "The generation of the resource.",
-				Computed:            true,
-			},
-		},
+		Attributes: MergeResourceAttributes(
+			attr,
+			tfparts.FetchRequestAttributes(),
+			tfparts.ApiOptionsResourceAttributes(),
+		),
 		Blocks: map[string]schema.Block{
-			"metadata": tfprovider.LongMetadataSchemaBlock(),
+			"metadata": tfparts.LongMetadataSchemaBlock(),
 		},
 	}
 }
@@ -115,9 +102,9 @@ func (r *KubernetesNamespace) Configure(ctx context.Context, req resource.Config
 	if req.ProviderData == nil {
 		return
 	}
-	provider, ok := req.ProviderData.(*tfprovider.KubernetesResourceProvider)
+	provider, ok := req.ProviderData.(*KubernetesResourceProvider)
 	if !ok {
-		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *tfprovider.KubernetesResourceProvider")
+		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *KubernetesResourceProvider")
 		return
 	}
 	r.Provider = provider
