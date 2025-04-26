@@ -1,38 +1,59 @@
 package tfparts
 
 import (
+	"errors"
 	"fmt"
-	"math/big"
 	"reflect"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
-func UnstructuredToDynamic(u unstructured.Unstructured) (basetypes.DynamicType, error) {
+func UnstructuredToDynamic(u unstructured.Unstructured) (basetypes.DynamicValue, error) {
 	// Convert the unstructured object to a map[string]interface{}
-	var dynamicValue basetypes.DynamicType
+	var dynamicValue basetypes.DynamicValue
 
-	return dynamicValue, fmt.Errorf("not implemented yet")
+	_, attrValue, err := anyToAttrValue(u.Object)
+	if err != nil {
+		return dynamicValue, err
+	}
+	// Create a new dynamic value
+	dynamicValue = basetypes.NewDynamicValue(attrValue)
+
+	return dynamicValue, nil
 }
 
-func anyToAttrValue(v interface{}) (attr.Value, error) {
+func DiagsToGoError(diags diag.Diagnostics) error {
+	if diags.HasError() {
+		msg := diags[0].Detail()
+		if msg == "" {
+			msg = diags[0].Summary()
+		}
+
+		return errors.New(msg)
+	}
+	return nil
+}
+
+func anyToAttrValue(v interface{}) (attr.Type, attr.Value, error) {
 	switch v := v.(type) {
 	case string:
-		return basetypes.NewStringValue(v), nil
+		return types.StringType, basetypes.NewStringValue(v), nil
 	case int64:
-		return basetypes.NewNumberValue(big.NewFloat(float64(v))), nil
+		return types.Int64Type, basetypes.NewInt64Value(v), nil
 	case float64:
-		return basetypes.NewNumberValue(big.NewFloat(v)), nil
+		return types.Float64Type, basetypes.NewFloat64Value(v), nil
 	case bool:
-		return basetypes.NewBoolValue(v), nil
+		return types.BoolType, basetypes.NewBoolValue(v), nil
 	default:
 		rValue := reflect.ValueOf(v)
 		for rValue.Kind() == reflect.Ptr || rValue.Kind() == reflect.Interface {
 			if rValue.IsNil() {
-				return basetypes.NewDynamicNull(), nil
+				return types.DynamicType, basetypes.NewDynamicNull(), nil
 			} else {
 				rValue = rValue.Elem()
 			}
@@ -40,35 +61,46 @@ func anyToAttrValue(v interface{}) (attr.Value, error) {
 		switch rValue.Kind() {
 		case reflect.Map:
 			m := make(map[string]attr.Value)
+			t := make(map[string]attr.Type)
 			for _, key := range rValue.MapKeys() {
 				keyValue := key.Interface()
 				value := rValue.MapIndex(key)
-				valueAttr, err := anyToAttrValue(value.Interface())
+				typeAttr, valueAttr, err := anyToAttrValue(value.Interface())
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
-				m[fmt.Sprintf("%v", keyValue)] = valueAttr
+				key := fmt.Sprintf("%v", keyValue)
+				m[key] = valueAttr
+				t[key] = typeAttr
 			}
-			return basetypes.NewObjectValue()
+			obj, diags := basetypes.NewObjectValue(t, m)
+			if diags.HasError() {
+				return nil, nil, DiagsToGoError(diags)
+			}
+			return types.ObjectType{AttrTypes: t}, obj, nil
 		case reflect.Slice, reflect.Array:
 			s := make([]attr.Value, rValue.Len())
+			t := make([]attr.Type, rValue.Len())
 			for i := 0; i < rValue.Len(); i++ {
 				value := rValue.Index(i)
-				valueAttr, err := anyToAttrValue(value.Interface())
+				typeAttr, valueAttr, err := anyToAttrValue(value.Interface())
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				s[i] = valueAttr
+				t[i] = typeAttr
 			}
-			return basetypes.NewTupleValue()
+			tupple, diags := basetypes.NewTupleValue(t, s)
+			if diags.HasError() {
+				return nil, nil, DiagsToGoError(diags)
+			}
+			return types.TupleType{ElemTypes: t}, tupple, nil
 		case reflect.Struct:
 			s := make(map[string]attr.Value)
+			t := make(map[string]attr.Type)
 			for i := 0; i < rValue.NumField(); i++ {
 				field := rValue.Type().Field(i)
 				value := rValue.Field(i)
-				if err != nil {
-					return nil, err
-				}
 				tags := field.Tag.Get("yaml")
 				parts := strings.Split(tags, ",")
 				if strings.Contains(tags, "omitempty") {
@@ -76,19 +108,25 @@ func anyToAttrValue(v interface{}) (attr.Value, error) {
 						continue
 					}
 				}
-				valueAttr, err := anyToAttrValue(value.Interface())
+				typeAttr, valueAttr, err := anyToAttrValue(value.Interface())
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if len(parts) > 0 && parts[0] != "" {
 					s[parts[0]] = valueAttr
+					t[parts[0]] = typeAttr
 				} else {
 					s[field.Name] = valueAttr
+					t[field.Name] = typeAttr
 				}
 			}
-			return basetypes.NewObjectValue()
+			object, diags := basetypes.NewObjectValue(t, s)
+			if diags.HasError() {
+				return nil, nil, DiagsToGoError(diags)
+			}
+			return types.ObjectType{AttrTypes: t}, object, nil
 		default:
-			return nil, fmt.Errorf("unsupported type: %s", rValue.Kind())
+			return nil, nil, fmt.Errorf("unsupported type: %s", rValue.Kind())
 		}
 	}
 }

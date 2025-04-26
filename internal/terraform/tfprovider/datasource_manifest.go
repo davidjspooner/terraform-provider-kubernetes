@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -45,22 +45,13 @@ func (r *DataSourceManifest) Schema(ctx context.Context, req datasource.SchemaRe
 		MarkdownDescription: "Read yaml from a list of files and return all the inner manifests",
 
 		Attributes: map[string]schema.Attribute{
-			"filenames": schema.ListAttribute{
-				MarkdownDescription: "List of paths to glob, load , split into documents, expand template and parse as a manifest",
-				ElementType:         types.StringType,
+			"text": schema.StringAttribute{
+				MarkdownDescription: "yaml formatted manifest",
 				Required:            true,
 			},
-			"variables": schema.MapAttribute{
-				MarkdownDescription: "Map of values to be used in the file. Requires template_type to be set",
-				ElementType:         types.StringType,
-				Optional:            true,
-			},
-			"manifests": schema.MapAttribute{
-				MarkdownDescription: "results", //TODO
-				ElementType: basetypes.ObjectType{
-					AttrTypes: manifestMapElementAttrType,
-				},
-				Computed: true,
+			"manifest": schema.DynamicAttribute{
+				MarkdownDescription: "the manifest as an object",
+				Computed:            true,
 			},
 		},
 	}

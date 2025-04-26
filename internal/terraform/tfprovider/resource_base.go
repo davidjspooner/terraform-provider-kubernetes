@@ -127,6 +127,9 @@ func (h *ResourceBase[implType]) Fetch(ctx context.Context, resourceBase *kube.R
 			diags.Append(diags...)
 			return diags
 		}
+	} else {
+		// If no outputs, set the output to an empty map
+		fetch.Output = basetypes.NewMapNull(types.StringType)
 	}
 	return diags
 }

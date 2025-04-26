@@ -3,7 +3,6 @@ package tfprovider
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"strings"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
@@ -19,7 +18,7 @@ var manifestMapElementAttrType = map[string]attr.Type{
 	"source": types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"file": types.StringType,
-			"line": types.NumberType,
+			"line": types.Int64Type,
 		},
 	},
 	"api_version": types.StringType,
@@ -110,18 +109,18 @@ func SplitAndExpandTemplateFiles(filenames []string, variables map[string]any) (
 	parsedDocsMap := make(map[string]attr.Value)
 	for _, doc := range parsedDocs {
 		value := map[string]attr.Value{
-			"api_version":   types.StringValue(doc.APIVersion),
-			"kind":          types.StringValue(doc.Kind),
-			"manifest_text": types.StringValue(doc.Manifest),
+			"api_version": types.StringValue(doc.APIVersion),
+			"kind":        types.StringValue(doc.Kind),
+			"text":        types.StringValue(doc.Manifest),
 		}
 		value["source"], diags = basetypes.NewObjectValue(
 			map[string]attr.Type{
 				"file": types.StringType,
-				"line": types.NumberType,
+				"line": types.Int64Type,
 			},
 			map[string]attr.Value{
 				"file": types.StringValue(doc.Source.File),
-				"line": types.NumberValue(big.NewFloat(float64(doc.Source.Line))),
+				"line": types.Int64Value(int64(doc.Source.Line)),
 			},
 		)
 		if diags.HasError() {

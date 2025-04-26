@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -27,10 +26,6 @@ func init() {
 		r := ResourceKubeResource{}
 		r.ResourceBase.tfTypeNameSuffix = "_resource"
 		attr := map[string]schema.Attribute{
-			"manifest_content": schema.StringAttribute{
-				MarkdownDescription: "Manifest to apply",
-				Optional:            true,
-			},
 			"manifest": schema.DynamicAttribute{
 				MarkdownDescription: "Manifest to apply",
 				Optional:            true,
@@ -59,17 +54,16 @@ type ResourceKubeResource struct {
 
 // ManifestResourceModel describes the resource data model.
 type ManifestResourceModel struct {
-	ManifestString types.String  `tfsdk:"manifest_content"`
-	Manifest       types.Dynamic `tfsdk:"manifest"`
+	Manifest types.Dynamic `tfsdk:"manifest"`
 
 	ApiOptions *tfparts.APIOptionsModel `tfsdk:"api_options"`
 	tfparts.FetchMap
 }
 
 func (model *ManifestResourceModel) BuildManifest(manifest *unstructured.Unstructured) error {
-	manifestStr := model.ManifestString.ValueString()
 	var err error
-	*manifest, err = kube.ParseSingleYamlManifest(manifestStr)
+	ctx := context.Background()
+	*manifest, err = tfparts.DynamicValueToUnstructured(ctx, model.Manifest)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			// This is a special case where the manifest is empty
@@ -82,7 +76,8 @@ func (model *ManifestResourceModel) BuildManifest(manifest *unstructured.Unstruc
 	return nil
 }
 func (model *ManifestResourceModel) UpdateFrom(manifest unstructured.Unstructured) error {
-	previousManifest, err := kube.ParseSingleYamlManifest(model.ManifestString.ValueString())
+	ctx := context.Background()
+	previousManifest, err := tfparts.DynamicValueToUnstructured(ctx, model.Manifest)
 	if err != nil {
 		return err
 	}
@@ -109,15 +104,16 @@ func (model *ManifestResourceModel) UpdateFrom(manifest unstructured.Unstructure
 		//if err != nil {
 		//	return err
 		//}
-		yamlData := []byte("changed....")
+		_ = 1
+		changed = false
 
-		model.ManifestString = basetypes.NewStringValue(string(yamlData))
 	}
 
 	return nil
 }
 func (model *ManifestResourceModel) GetResouceKey() (kube.ResourceKey, error) {
-	manifest, err := kube.ParseSingleYamlManifest(model.ManifestString.ValueString())
+	ctx := context.Background()
+	manifest, err := tfparts.DynamicValueToUnstructured(ctx, model.Manifest)
 	if err != nil {
 		return kube.ResourceKey{}, nil
 	}
