@@ -22,9 +22,8 @@ var _ resource.Resource = &ResourceKubeQuery{}
 func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
-		r := &ResourceKubeQuery{
-			tfTypeNameSuffix: "_watch",
-		}
+		r := &ResourceKubeQuery{}
+		r.ResourceBase.tfTypeNameSuffix = "_query"
 		return r
 	})
 }
@@ -32,7 +31,6 @@ func init() {
 // ResourceKubeQuery defines the resource implementation.
 type ResourceKubeQuery struct {
 	ResourceBase[*WatchModel]
-	tfTypeNameSuffix string
 }
 
 // WatchModel describes the resource data model.
@@ -85,7 +83,7 @@ func (model *WatchModel) GetResouceKey() (kube.ResourceKey, error) {
 }
 
 func (r *ResourceKubeQuery) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
+	r.ResourceBase.Metadata(ctx, req, resp)
 }
 
 func (r *ResourceKubeQuery) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

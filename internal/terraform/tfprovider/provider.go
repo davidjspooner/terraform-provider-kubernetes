@@ -26,7 +26,8 @@ type KubernetesResourceProvider struct {
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
 
-	version string
+	version  string
+	typeName string
 
 	Shared            kube.APIClientWrapper
 	DefaultApiOptions *kube.APIClientOptions
@@ -43,7 +44,7 @@ type KubernetesProviderModel struct {
 }
 
 func (p *KubernetesResourceProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
-	resp.TypeName = "kube"
+	resp.TypeName = p.typeName
 	resp.Version = p.version
 }
 
@@ -176,7 +177,8 @@ func init() {
 func NewProvider(version string) func() provider.Provider {
 	return func() provider.Provider {
 		return &KubernetesResourceProvider{
-			version: version,
+			version:  version,
+			typeName: "kube",
 		}
 	}
 }

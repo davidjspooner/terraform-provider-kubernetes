@@ -18,15 +18,14 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &ResourceKubeManifest{}
-var _ resource.ResourceWithImportState = &ResourceKubeManifest{}
+var _ resource.Resource = &ResourceKubeResource{}
+var _ resource.ResourceWithImportState = &ResourceKubeResource{}
 
 func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
-		r := ResourceKubeManifest{
-			tfTypeNameSuffix: "_manifest",
-		}
+		r := ResourceKubeResource{}
+		r.ResourceBase.tfTypeNameSuffix = "_resource"
 		attr := map[string]schema.Attribute{
 			"manifest_content": schema.StringAttribute{
 				MarkdownDescription: "Manifest to apply",
@@ -53,10 +52,9 @@ func init() {
 	})
 }
 
-// ResourceKubeManifest defines the resource implementation.
-type ResourceKubeManifest struct {
+// ResourceKubeResource defines the resource implementation.
+type ResourceKubeResource struct {
 	ResourceBase[*ManifestResourceModel]
-	tfTypeNameSuffix string
 }
 
 // ManifestResourceModel describes the resource data model.
@@ -140,38 +138,38 @@ func (model *ManifestResourceModel) GetResouceKey() (kube.ResourceKey, error) {
 	return k, nil
 }
 
-func (r *ResourceKubeManifest) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
+func (r *ResourceKubeResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	r.ResourceBase.Metadata(ctx, req, resp)
 }
 
-func (r *ResourceKubeManifest) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ResourceKubeResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = r.schema
 }
 
-func (r *ResourceKubeManifest) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ResourceKubeResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	r.ResourceBase.Configure(ctx, req, resp)
 }
 
-func (r *ResourceKubeManifest) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (r *ResourceKubeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	plan := &ManifestResourceModel{}
 	r.ResourceBase.Create(ctx, plan, req, resp)
 }
 
-func (r *ResourceKubeManifest) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (r *ResourceKubeResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	state := &ManifestResourceModel{}
 	r.ResourceBase.Read(ctx, state, req, resp)
 }
 
-func (r *ResourceKubeManifest) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *ResourceKubeResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	plan := &ManifestResourceModel{}
 	r.ResourceBase.Update(ctx, plan, req, resp)
 }
 
-func (r *ResourceKubeManifest) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ResourceKubeResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	state := &ManifestResourceModel{}
 	r.ResourceBase.Delete(ctx, state, req, resp)
 }
 
-func (r *ResourceKubeManifest) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *ResourceKubeResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resp.Diagnostics.AddError("Import not supported", "This resource does not support import")
 }

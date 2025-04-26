@@ -172,7 +172,7 @@ func (model *SecretModel) GetResouceKey() (kube.ResourceKey, error) {
 }
 
 func (r *KubernetesSecret) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
+	r.ResourceBase.Metadata(ctx, req, resp)
 }
 
 func (r *KubernetesSecret) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

@@ -53,11 +53,14 @@ func main() {
 		// TODO: Update this string with the published name of your provider.
 		// Also update the tfplugindocs generate command to either remove the
 		// -provider-name flag or set its value to the updated provider name.
-		Address: "dstower.home.dolbyn.com/davidjspooner/kubernetes",
-		Debug:   debug,
+		Address:         "dstower.home.dolbyn.com/davidjspooner/kubernetes",
+		Debug:           debug,
+		ProtocolVersion: 6,
 	}
 
-	err := providerserver.Serve(context.Background(), tfprovider.NewProvider(Version), opts)
+	ctx := context.Background()
+	provider := tfprovider.NewProvider(Version)
+	err := providerserver.Serve(ctx, provider, opts)
 
 	if err != nil {
 		log.Fatal(err.Error())

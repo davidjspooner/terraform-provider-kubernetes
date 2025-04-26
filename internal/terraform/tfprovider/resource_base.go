@@ -20,6 +20,14 @@ type ResourceBase[implType kube.StateInteraface] struct {
 	schema           schema.Schema
 }
 
+func (h *ResourceBase[implType]) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	if h.Provider == nil {
+		resp.TypeName = req.ProviderTypeName + h.tfTypeNameSuffix
+		return
+	}
+	resp.TypeName = h.Provider.typeName + h.tfTypeNameSuffix
+}
+
 func (h *ResourceBase[implType]) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {

@@ -163,7 +163,7 @@ func (model *ConfigMapModel) GetResouceKey() (kube.ResourceKey, error) {
 }
 
 func (r *ResourceKubeConfigMap) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + r.tfTypeNameSuffix
+	r.ResourceBase.Metadata(ctx, req, resp)
 }
 
 func (r *ResourceKubeConfigMap) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

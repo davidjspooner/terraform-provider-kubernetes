@@ -24,7 +24,7 @@ func init() {
 			MarkdownDescription: "Query a Kubernetes resource and fetch specific fields.",
 			Attributes: MergeDataAttributes(
 				map[string]schema.Attribute{
-					"depends_on": schema.SetAttribute{
+					"after": schema.DynamicAttribute{
 						MarkdownDescription: "Resources that this resource depends on.",
 						Optional:            true,
 					},
@@ -56,7 +56,7 @@ type DataSourceKubeQuery struct {
 
 // KubeQueryModel describes the datasource data model.
 type KubeQueryModel struct {
-	DependsOn  types.Set              `tfsdk:"depends_on"`
+	DependsOn  types.Dynamic          `tfsdk:"after"`
 	ApiVersion types.String           `tfsdk:"api_version"`
 	Kind       types.String           `tfsdk:"kind"`
 	Metadata   *tfparts.ShortMetadata `tfsdk:"metadata"`
@@ -77,7 +77,7 @@ func (m *KubeQueryModel) UpdateFrom(manifest unstructured.Unstructured) error {
 }
 
 func (d *DataSourceKubeQuery) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-
+	d.DataSourceBase.Metadata(ctx, req, resp)
 }
 
 func (d *DataSourceKubeQuery) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {

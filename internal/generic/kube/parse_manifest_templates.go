@@ -6,13 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type ParsedDocument struct {
-	FullManifest unstructured.Unstructured
-	Source       struct {
+	Manifest string
+	Parsed   unstructured.Unstructured
+	Source   struct {
 		File string
 		Line int
 	}
@@ -25,28 +27,46 @@ type ParsedDocument struct {
 }
 
 type unparsedDocument struct {
-	FullManifest string
-	Source       struct {
-		File string
-		Line int
+	Manifest string
+	Source   struct {
+		Filename string
+		Line     int
 	}
 }
 
-func (doc *unparsedDocument) Parse() (*ParsedDocument, error) {
+func (doc *unparsedDocument) ExpandTemplateAndParse(variables map[string]any) (*ParsedDocument, error) {
 	// Implement the parsing logic here
 	// This is a placeholder implementation
 
-	unstructuredObj, err := ParseSingleYamlManifest(doc.FullManifest)
+	s := doc.Manifest
+
+	if len(variables) > 0 {
+		//create a template from the manifest and expand it with the variables
+		source := fmt.Sprintf("%s [line:%d]", doc.Source.Filename, doc.Source.Line)
+		t, err := template.New(source).Parse(s)
+		if err != nil {
+			return nil, err
+		}
+		var buf strings.Builder
+		err = t.Execute(&buf, variables)
+		if err != nil {
+			return nil, err
+		}
+		s = buf.String()
+	}
+
+	unstructuredObj, err := ParseSingleYamlManifest(s)
 	if err != nil {
 		return nil, err
 	}
 	parsedDoc := &ParsedDocument{
-		FullManifest: unstructuredObj,
+		Manifest: s,
+		Parsed:   unstructuredObj,
 		Source: struct {
 			File string
 			Line int
 		}{
-			File: doc.Source.File,
+			File: doc.Source.Filename,
 			Line: doc.Source.Line,
 		},
 		APIVersion: unstructuredObj.GetAPIVersion(),
@@ -60,13 +80,13 @@ func (doc *unparsedDocument) Parse() (*ParsedDocument, error) {
 		},
 	}
 	if parsedDoc.APIVersion == "" {
-		return nil, fmt.Errorf("missing apiVersion in manifest: %s line %d ", doc.Source.File, doc.Source.Line)
+		return nil, fmt.Errorf("missing apiVersion in manifest: %s line %d ", doc.Source.Filename, doc.Source.Line)
 	}
 	if parsedDoc.Kind == "" {
-		return nil, fmt.Errorf("missing kind in manifest: %s line %d ", doc.Source.File, doc.Source.Line)
+		return nil, fmt.Errorf("missing kind in manifest: %s line %d ", doc.Source.Filename, doc.Source.Line)
 	}
 	if parsedDoc.Metadata.Name == "" {
-		return nil, fmt.Errorf("missing name in manifest: %s line %d ", doc.Source.File, doc.Source.Line)
+		return nil, fmt.Errorf("missing name in manifest: %s line %d ", doc.Source.Filename, doc.Source.Line)
 	}
 
 	return parsedDoc, nil
@@ -92,13 +112,13 @@ func readDocumentsFromFileAndSplit(filePath string) ([]unparsedDocument, error) 
 			s := strings.TrimSpace(currentManifest.String())
 			if len(s) > 0 {
 				documents = append(documents, unparsedDocument{
-					FullManifest: s,
+					Manifest: s,
 					Source: struct {
-						File string
-						Line int
+						Filename string
+						Line     int
 					}{
-						File: filePath,
-						Line: lineNumber,
+						Filename: filePath,
+						Line:     lineNumber,
 					},
 				})
 				currentManifest.Reset()
@@ -108,17 +128,32 @@ func readDocumentsFromFileAndSplit(filePath string) ([]unparsedDocument, error) 
 			// Add the line to the current manifest
 			currentManifest.WriteString(line + "\n")
 		}
-
-		currentManifest.WriteString(line + "\n")
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+	s := strings.TrimSpace(currentManifest.String())
+	if len(s) > 0 {
+		documents = append(documents, unparsedDocument{
+			Manifest: s,
+			Source: struct {
+				Filename string
+				Line     int
+			}{
+				Filename: filePath,
+				Line:     lineNumber,
+			},
+		})
+		currentManifest.Reset()
+	}
+	if len(documents) == 0 {
+		return nil, fmt.Errorf("no documents found in file: %s", filePath)
 	}
 
 	return documents, nil
 }
 
-func ParseManifestTemplates(templateFiles []string, variables map[string]any) ([]*ParsedDocument, error) {
+func SplitAndExpandTemplates(templateFiles []string, variables map[string]any) ([]*ParsedDocument, error) {
 	// Implement the parsing logic here
 	// This is a placeholder implementation
 	var parsedDocuments []*ParsedDocument
@@ -138,7 +173,7 @@ func ParseManifestTemplates(templateFiles []string, variables map[string]any) ([
 			return nil, err
 		}
 		for _, unparsedDoc := range unparsedDocuments {
-			parsedDoc, err := unparsedDoc.Parse()
+			parsedDoc, err := unparsedDoc.ExpandTemplateAndParse(variables)
 			if err != nil {
 				return nil, err
 			}

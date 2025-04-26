@@ -91,6 +91,13 @@ func (h *DataSourceBase[implType]) Fetch(ctx context.Context, resourceBase *kube
 	}
 	return diags
 }
+func (h *DataSourceBase[implType]) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	if h.Provider == nil {
+		resp.TypeName = req.ProviderTypeName + h.tfTypeNameSuffix
+		return
+	}
+	resp.TypeName = h.Provider.typeName + h.tfTypeNameSuffix
+}
 func (h *DataSourceBase[implType]) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = h.schema
 }

@@ -2,7 +2,9 @@ package tfprovider
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/davidjspooner/terraform-provider-kubernetes/internal/generic/kube"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -11,6 +13,24 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
+
+var manifestMapElementAttrType = map[string]attr.Type{
+	"text": types.StringType,
+	"source": types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"file": types.StringType,
+			"line": types.NumberType,
+		},
+	},
+	"api_version": types.StringType,
+	"kind":        types.StringType,
+	"metadata": types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"name":      types.StringType,
+			"namespace": types.StringType,
+		},
+	},
+}
 
 // FunctionKubeParseTemplateFiles implements the terraform function.Function interface.
 type FunctionKubeParseTemplateFiles struct {
@@ -23,7 +43,7 @@ func NewFunctionKubeParseTemplateFiles() function.Function {
 
 // Metadata provides metadata for the function.
 func (f *FunctionKubeParseTemplateFiles) Metadata(ctx context.Context, req function.MetadataRequest, resp *function.MetadataResponse) {
-	resp.Name = "kube_parse_manifest_files"
+	resp.Name = "kube_manifest_files"
 }
 
 func (f *FunctionKubeParseTemplateFiles) Definition(ctx context.Context, req function.DefinitionRequest, resp *function.DefinitionResponse) {
@@ -40,26 +60,26 @@ func (f *FunctionKubeParseTemplateFiles) Definition(ctx context.Context, req fun
 				ElementType: types.StringType,
 			},
 		},
-		Return: function.MapReturn{
-			ElementType: types.ObjectType{
-				AttrTypes: map[string]attr.Type{
-					"full_manifest": types.DynamicType,
-					"source": types.ObjectType{
-						AttrTypes: map[string]attr.Type{
-							"file": types.StringType,
-							"line": types.NumberType,
-						},
-					},
-					"api_version": types.StringType,
-					"kind":        types.StringType,
-					"metadata": types.ObjectType{
-						AttrTypes: map[string]attr.Type{
-							"name":      types.StringType,
-							"namespace": types.StringType,
-						},
-					},
-				},
-			},
+		Return: function.DynamicReturn{
+			// ElementType: types.ObjectType{
+			// 	AttrTypes: map[string]attr.Type{
+			// 		"full_manifest": types.DynamicType,
+			// 		"source": types.ObjectType{
+			// 			AttrTypes: map[string]attr.Type{
+			// 				"file": types.StringType,
+			// 				"line": types.NumberType,
+			// 			},
+			// 		},
+			// 		"api_version": types.StringType,
+			// 		"kind":        types.StringType,
+			// 		"metadata": types.ObjectType{
+			// 			AttrTypes: map[string]attr.Type{
+			// 				"name":      types.StringType,
+			// 				"namespace": types.StringType,
+			// 			},
+			// 		},
+			// 	},
+			// },
 		},
 		Summary: "Parse Kubernetes template files",
 		Description: `Glob and split a list of Kubernetes template files. 
@@ -68,56 +88,31 @@ func (f *FunctionKubeParseTemplateFiles) Definition(ctx context.Context, req fun
 	}
 }
 
-func (f *FunctionKubeParseTemplateFiles) Run(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
-	// Retrieve the first argument as []string
-	var templateFiles []string
-	funcErr := req.Arguments.GetArgument(ctx, 0, &templateFiles)
-	if funcErr != nil {
-		resp.Error = function.NewArgumentFuncError(0, "Failed to parse 'template_files' as a list of strings: "+funcErr.Error())
-		return
-	}
-
-	// Retrieve the second argument as map[string]any
-	var values map[string]any
-	funcErr = req.Arguments.GetArgument(ctx, 1, &values)
-	if funcErr != nil {
-		resp.Error = function.NewArgumentFuncError(1, "Failed to parse 'values' as a map: "+funcErr.Error())
-		return
-	}
-
+func SplitAndExpandTemplateFiles(filenames []string, variables map[string]any) (types.Map, diag.Diagnostics) {
 	//call kube.ParseManifestTemplates
-	parsedDocs, err := kube.ParseManifestTemplates(templateFiles, values)
+
+	var result types.Map
+	var diags diag.Diagnostics
+
+	parsedDocs, err := kube.SplitAndExpandTemplates(filenames, variables)
 	if err != nil {
-		resp.Error = function.NewArgumentFuncError(0, "Failed to parse template files: "+funcErr.Error())
-		return
+		diags.AddError("Error reading files", err.Error())
+		return result, diags
+	}
+	if len(parsedDocs) == 0 {
+		details := fmt.Sprintf("No documents found matching %s", strings.Join(filenames, ", "))
+		diags.AddError("No documents found", details)
+		return result, diags
 	}
 
 	// Convert the parsed documents to a map of objects
 
-	objectAttr := map[string]attr.Type{
-		"full_manifest": types.StringType,
-		"source": types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"file": types.StringType,
-				"line": types.NumberType,
-			},
-		},
-		"api_version": types.StringType,
-		"kind":        types.StringType,
-		"metadata": types.ObjectType{
-			AttrTypes: map[string]attr.Type{
-				"name":      types.StringType,
-				"namespace": types.StringType,
-			},
-		},
-	}
-
 	parsedDocsMap := make(map[string]attr.Value)
-	var diags diag.Diagnostics
 	for _, doc := range parsedDocs {
 		value := map[string]attr.Value{
-			"api_version": types.StringValue(doc.APIVersion),
-			"kind":        types.StringValue(doc.Kind),
+			"api_version":   types.StringValue(doc.APIVersion),
+			"kind":          types.StringValue(doc.Kind),
+			"manifest_text": types.StringValue(doc.Manifest),
 		}
 		value["source"], diags = basetypes.NewObjectValue(
 			map[string]attr.Type{
@@ -130,8 +125,7 @@ func (f *FunctionKubeParseTemplateFiles) Run(ctx context.Context, req function.R
 			},
 		)
 		if diags.HasError() {
-			txtError := "TODO"
-			resp.Error = function.NewArgumentFuncError(0, "Failed to create source object: "+txtError)
+			return result, diags
 		}
 		value["metadata"], diags = basetypes.NewObjectValue(
 			map[string]attr.Type{
@@ -144,28 +138,51 @@ func (f *FunctionKubeParseTemplateFiles) Run(ctx context.Context, req function.R
 			},
 		)
 		if diags.HasError() {
-			txtError := "TODO"
-			resp.Error = function.NewArgumentFuncError(0, "Failed to create metadata object: "+txtError)
+			return result, diags
 		}
-		value["full_manifest"] = basetypes.NewDynamicNull() //TODO
 
-		object, diags := basetypes.NewObjectValue(objectAttr, value)
+		object, diags := basetypes.NewObjectValue(manifestMapElementAttrType, value)
 		if diags.HasError() {
-			txtError := "TODO"
-			resp.Error = function.NewArgumentFuncError(0, "Failed to create parsed document object: "+txtError)
+			return result, diags
 		}
-		parsedDocsMap[doc.Metadata.Name] = object
+		key := fmt.Sprintf("%s:%s:%s", doc.Kind, doc.Metadata.Namespace, doc.Metadata.Name)
+		_, exists := parsedDocsMap[key]
+		if exists {
+			diags.AddError("Duplicate manifest", fmt.Sprintf("Duplicate manifest found for kind=%q namespace=%q name=%q at %s [%d]", doc.Kind, doc.Metadata.Namespace, doc.Metadata.Name, doc.Source.File, doc.Source.Line))
+			// Add the existing object to the diagnostics
+			return result, diags
+		}
+		parsedDocsMap[key] = object
 	}
-	result, diags := basetypes.NewMapValue(
+	result, diags = basetypes.NewMapValue(
 		types.ObjectType{
-			AttrTypes: objectAttr,
+			AttrTypes: manifestMapElementAttrType,
 		},
 		parsedDocsMap,
 	)
-	if diags.HasError() {
-		txtError := "TODO"
-		resp.Error = function.NewArgumentFuncError(0, "Failed to create result map: "+txtError)
+	return result, nil
+}
+
+func (f *FunctionKubeParseTemplateFiles) Run(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
+	// Retrieve the first argument as []string
+	var filenames []string
+	funcErr := req.Arguments.GetArgument(ctx, 0, &filenames)
+	if funcErr != nil {
+		resp.Error = function.NewArgumentFuncError(0, "Failed to parse 'template_files' as a list of strings: "+funcErr.Error())
 		return
+	}
+
+	// Retrieve the second argument as map[string]any
+	var variables map[string]any
+	funcErr = req.Arguments.GetArgument(ctx, 1, &variables)
+	if funcErr != nil {
+		resp.Error = function.NewArgumentFuncError(1, "Failed to parse 'values' as a map: "+funcErr.Error())
+		return
+	}
+
+	result, diags := SplitAndExpandTemplateFiles(filenames, variables)
+	if diags.HasError() {
+		resp.Error = function.FuncErrorFromDiags(ctx, diags)
 	}
 	resp.Result.Set(ctx, result)
 }
