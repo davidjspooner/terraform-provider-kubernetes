@@ -3,6 +3,7 @@ package tfprovider
 import (
 	"context"
 
+	"github.com/davidjspooner/terraform-provider-kubernetes/internal/terraform/tfparts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,7 +18,7 @@ func init() {
 	// Register the data source with the provider.
 	RegisterDataSource(func() datasource.DataSource {
 		ds := &DataSourceKubeManifestFiles{
-			tfTypeNameSuffix: "_manifest_files",
+			tfTypeNameSuffix: "_manifest_documents",
 		}
 		return ds
 	})
@@ -30,9 +31,8 @@ type DataSourceKubeManifestFiles struct {
 
 // FileManifestsModel describes the resource data tfshared.
 type FileManifestsModel struct {
-	FileNames types.List `tfsdk:"filenames"`
-	Variables types.Map  `tfsdk:"variables"`
-	Documents types.Map  `tfsdk:"documents"`
+	tfparts.FileSetModelList
+	Documents types.Map `tfsdk:"documents"`
 }
 
 func (r *DataSourceKubeManifestFiles) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -40,29 +40,23 @@ func (r *DataSourceKubeManifestFiles) Metadata(ctx context.Context, req datasour
 }
 
 func (r *DataSourceKubeManifestFiles) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	attr := map[string]schema.Attribute{
+		"documents": schema.MapAttribute{
+			MarkdownDescription: "results", //TODO
+			ElementType: basetypes.ObjectType{
+				AttrTypes: tfparts.DocumentElementAttrType,
+			},
+			Computed: true,
+		},
+	}
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Read yaml from a list of files and return all the inner documents",
 
-		Attributes: map[string]schema.Attribute{
-			"filenames": schema.ListAttribute{
-				MarkdownDescription: "List of paths to glob, load , split into documents, expand template and parse as a manifest",
-				ElementType:         types.StringType,
-				Required:            true,
-			},
-			"variables": schema.MapAttribute{
-				MarkdownDescription: "Map of values to be used in the file. Requires template_type to be set",
-				ElementType:         types.StringType,
-				Optional:            true,
-			},
-			"documents": schema.MapAttribute{
-				MarkdownDescription: "results", //TODO
-				ElementType: basetypes.ObjectType{
-					AttrTypes: manifestMapElementAttrType,
-				},
-				Computed: true,
-			},
-		},
+		Attributes: MergeDataAttributes(
+			attr,
+			tfparts.FileSetsDatasourceAttributes(true),
+		),
 	}
 }
 
@@ -75,27 +69,13 @@ func (r *DataSourceKubeManifestFiles) Read(ctx context.Context, req datasource.R
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	// Retrieve the first argument as []string
-	var filenames []string
-	diags := config.FileNames.ElementsAs(ctx, &filenames, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+
+	fsds := config.GetFileSetDefs()
+	for i := range fsds {
+		fsds[i].SplitYamlDocs = true
 	}
 
-	// Retrieve the second argument as map[string]any
-	var variables map[string]string
-	diags = config.Variables.ElementsAs(ctx, &variables, false)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	variables2 := make(map[string]any, len(variables))
-	for k, v := range variables {
-		variables2[k] = v
-	}
-	results, diags := SplitAndExpandTemplateFiles(filenames, variables2)
+	results, diags := tfparts.GenerateDocumentList(fsds)
 	resp.Diagnostics.Append(diags...)
 	if diags.HasError() {
 		return

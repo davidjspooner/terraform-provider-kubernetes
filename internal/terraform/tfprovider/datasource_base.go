@@ -62,6 +62,7 @@ func (h *DataSourceBase[implType]) Read(ctx context.Context, config implType, re
 		resp.Diagnostics.Append(diags...)
 		return
 	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, config)...)
 }
 
 func (h *DataSourceBase[implType]) Fetch(ctx context.Context, resourceBase *kube.ResourceHelper, config implType, existRequirement kube.ExistRequirement) diag.Diagnostics {

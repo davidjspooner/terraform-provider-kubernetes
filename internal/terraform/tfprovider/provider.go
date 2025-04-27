@@ -110,17 +110,22 @@ func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider
 	p.Shared.SetConfigContext(data.ConfigContext.ValueString())
 	p.Shared.SetNamespace(data.Namespace.ValueString())
 
-	if data.DefaultApiOptions != nil {
+	if data.DefaultApiOptions == nil {
 		data.DefaultApiOptions = &tfparts.APIOptionsModel{}
 	}
 
 	var err error
-	defaultDefaults := &tfparts.APIOptionsModel{
-		Retry: &job.RetryModel{},
+	defaultDefaults := &kube.APIClientOptions{
+		Retry: job.RetryModel{
+			MaxAttempts:  job.PointerTo(int64(3)),
+			Interval:     job.PointerTo("10s,20s,30s"),
+			Timeout:      job.PointerTo("5m"),
+			InitialPause: job.PointerTo("0s"),
+		},
+		FieldManager: job.PointerTo("terraform-provider-kubernetes"),
 	}
-	//TODO set more setDefaults
 
-	p.DefaultApiOptions, err = kube.MergeAPIOptions(defaultDefaults.Options(), data.DefaultApiOptions.Options())
+	p.DefaultApiOptions, err = kube.MergeAPIOptions(defaultDefaults, data.DefaultApiOptions.Options())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to initialize provider api options", err.Error())
@@ -168,10 +173,6 @@ func (p *KubernetesResourceProvider) Functions(ctx context.Context) []func() fun
 	lock.Lock()
 	defer lock.Unlock()
 	return supportedFunctions
-}
-
-func init() {
-	RegisterFunction(NewFunctionKubeParseTemplateFiles)
 }
 
 func NewProvider(version string) func() provider.Provider {

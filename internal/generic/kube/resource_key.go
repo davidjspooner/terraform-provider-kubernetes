@@ -10,7 +10,7 @@ import (
 type ResourceKey struct {
 	ApiVersion string `yaml:"apiVersion"`
 	Kind       string `yaml:"kind"`
-	MetaData   struct {
+	Metadata   struct {
 		Name      string  `yaml:"name"`
 		Namespace *string `yaml:"namespace,omitempty"`
 	} `yaml:"metadata"`
@@ -20,12 +20,12 @@ func (key *ResourceKey) String() string {
 
 	sb := strings.Builder{}
 	fmt.Fprintf(&sb, "%s/%s", key.ApiVersion, key.Kind)
-	if key.MetaData.Namespace != nil {
-		fmt.Fprintf(&sb, "/%s", *key.MetaData.Namespace)
+	if key.Metadata.Namespace != nil {
+		fmt.Fprintf(&sb, "/%s", *key.Metadata.Namespace)
 	} else {
 		fmt.Fprintf(&sb, "/default")
 	}
-	fmt.Fprintf(&sb, "/%s", key.MetaData.Name)
+	fmt.Fprintf(&sb, "/%s", key.Metadata.Name)
 	return sb.String()
 }
 
@@ -39,11 +39,11 @@ func CompareKeys(a, b *ResourceKey) int {
 		return r
 	}
 	var namespace1, namespace2 string
-	if a.MetaData.Namespace != nil {
-		namespace1 = *a.MetaData.Namespace
+	if a.Metadata.Namespace != nil {
+		namespace1 = *a.Metadata.Namespace
 	}
-	if b.MetaData.Namespace != nil {
-		namespace2 = *b.MetaData.Namespace
+	if b.Metadata.Namespace != nil {
+		namespace2 = *b.Metadata.Namespace
 	}
 
 	r = strings.Compare(namespace1, namespace2)
@@ -60,8 +60,8 @@ func GetKey(r unstructured.Unstructured) *ResourceKey {
 	k := ResourceKey{}
 	k.ApiVersion = r.GetAPIVersion()
 	k.Kind = r.GetKind()
-	k.MetaData.Name = r.GetName()
+	k.Metadata.Name = r.GetName()
 	namespace := r.GetNamespace()
-	k.MetaData.Namespace = &namespace
+	k.Metadata.Namespace = &namespace
 	return &k
 }

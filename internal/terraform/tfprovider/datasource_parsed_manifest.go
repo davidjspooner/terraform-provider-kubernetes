@@ -18,7 +18,7 @@ func init() {
 	// Register the data source with the provider.
 	RegisterDataSource(func() datasource.DataSource {
 		ds := &DataSourceManifest{
-			tfTypeNameSuffix: "_manifest",
+			tfTypeNameSuffix: "_parsed_manifest",
 		}
 		return ds
 	})

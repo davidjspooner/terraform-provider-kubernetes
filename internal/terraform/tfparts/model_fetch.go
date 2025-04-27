@@ -48,7 +48,7 @@ func FetchRequestAttributes() map[string]rschema.Attribute {
 
 func FetchDatasourceAttributes(required bool) map[string]dschema.Attribute {
 	return map[string]dschema.Attribute{
-		"fetch": dschema.ListNestedAttribute{
+		"fetch": dschema.MapNestedAttribute{
 			Description: "List of queries to check.",
 			Required:    required,
 			NestedObject: dschema.NestedAttributeObject{

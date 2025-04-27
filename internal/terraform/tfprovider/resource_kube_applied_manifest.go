@@ -24,7 +24,7 @@ func init() {
 	// Register the resource with the provider.
 	RegisterResource(func() resource.Resource {
 		r := ResourceKubeResource{}
-		r.ResourceBase.tfTypeNameSuffix = "_resource"
+		r.ResourceBase.tfTypeNameSuffix = "_applied_manifest"
 		attr := map[string]schema.Attribute{
 			"manifest": schema.DynamicAttribute{
 				MarkdownDescription: "Manifest to apply",
@@ -127,9 +127,9 @@ func (model *ManifestResourceModel) GetResouceKey() (kube.ResourceKey, error) {
 		ApiVersion: manifest.GetAPIVersion(),
 		Kind:       manifest.GetKind(),
 	}
-	k.MetaData.Name = name
+	k.Metadata.Name = name
 	if namespace != "" {
-		k.MetaData.Namespace = &namespace
+		k.Metadata.Namespace = &namespace
 	}
 	return k, nil
 }

@@ -18,8 +18,12 @@ type RetryModel struct {
 	Timeout      *string   `tfsdk:"timeout"`
 }
 
-func MergeRetryModels(models ...*RetryModel) (*RetryModel, error) {
-	merged := &RetryModel{}
+func PointerTo[T any](v T) *T {
+	return &v
+}
+
+func MergeRetryModels(models ...*RetryModel) (RetryModel, error) {
+	merged := RetryModel{}
 	for _, model := range models {
 		if model == nil {
 			continue

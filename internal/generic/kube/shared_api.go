@@ -22,7 +22,7 @@ import (
 )
 
 type APIClientOptions struct {
-	Retry          *job.RetryModel
+	Retry          job.RetryModel
 	FieldManager   *string
 	ForceConflicts *bool
 }
@@ -49,11 +49,9 @@ func MergeAPIOptions(
 		if model == nil {
 			continue
 		}
-		if model.Retry != nil {
-			merged.Retry, err = job.MergeRetryModels(merged.Retry, model.Retry)
-			if err != nil {
-				return nil, err
-			}
+		merged.Retry, err = job.MergeRetryModels(&merged.Retry, &model.Retry)
+		if err != nil {
+			return nil, err
 		}
 		if model.FieldManager != nil {
 			merged.FieldManager = model.FieldManager
@@ -69,9 +67,6 @@ func MergeAPIOptions(
 	if merged.ForceConflicts == nil {
 		b := true
 		merged.ForceConflicts = &b
-	}
-	if merged.Retry == nil {
-		merged.Retry = &job.RetryModel{}
 	}
 	if merged.Retry.MaxAttempts == nil {
 		i := int64(3)
@@ -336,12 +331,12 @@ func (shared *APIClientWrapper) getNamespaceForKind(kind string, namespace *stri
 func (shared *APIClientWrapper) Get(ctx context.Context, key *ResourceKey, apiOptions *APIClientOptions) (unstructured.Unstructured, error) {
 	// fetch Object and update the model
 
-	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.MetaData.Namespace))
+	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.Metadata.Namespace))
 
 	if err != nil {
 		return unstructured.Unstructured{}, err
 	}
-	u, err := ri.Get(ctx, key.MetaData.Name, metav1.GetOptions{})
+	u, err := ri.Get(ctx, key.Metadata.Name, metav1.GetOptions{})
 	if err != nil {
 		return unstructured.Unstructured{}, err
 	}
@@ -349,7 +344,7 @@ func (shared *APIClientWrapper) Get(ctx context.Context, key *ResourceKey, apiOp
 }
 
 func (shared *APIClientWrapper) Apply(ctx context.Context, key *ResourceKey, u unstructured.Unstructured, apiOptions *APIClientOptions) error {
-	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.MetaData.Namespace))
+	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.Metadata.Namespace))
 	if err != nil {
 		return err
 	}
@@ -364,7 +359,7 @@ func (shared *APIClientWrapper) Apply(ctx context.Context, key *ResourceKey, u u
 		}
 	}
 
-	reply, err := ri.Apply(ctx, key.MetaData.Name, &u, ao)
+	reply, err := ri.Apply(ctx, key.Metadata.Name, &u, ao)
 	if err != nil {
 		return err
 	}
@@ -376,12 +371,12 @@ func (shared *APIClientWrapper) Apply(ctx context.Context, key *ResourceKey, u u
 }
 
 func (shared *APIClientWrapper) Delete(ctx context.Context, key *ResourceKey, apiOptions *APIClientOptions) error {
-	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.MetaData.Namespace))
+	ri, err := shared.ResourceInterface(ctx, key.ApiVersion, key.Kind, shared.getNamespaceForKind(key.Kind, key.Metadata.Namespace))
 	if err != nil {
 		return err
 	}
 
-	err = ri.Delete(ctx, key.MetaData.Name, metav1.DeleteOptions{})
+	err = ri.Delete(ctx, key.Metadata.Name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

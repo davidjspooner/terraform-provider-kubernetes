@@ -18,10 +18,6 @@ func ErrorMessagesAreEqual(err1, err2 error) bool {
 	return msg1 == msg2
 }
 
-func PointerTo[T any](v T) *T {
-	return &v
-}
-
 func TestRetryHelper(t *testing.T) {
 	retrySchema := RetryModel{
 		MaxAttempts:  PointerTo[int64](3),
