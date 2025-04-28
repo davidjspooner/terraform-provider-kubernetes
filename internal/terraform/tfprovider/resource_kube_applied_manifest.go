@@ -56,7 +56,7 @@ type ResourceKubeResource struct {
 type ManifestResourceModel struct {
 	Manifest types.Dynamic `tfsdk:"manifest"`
 
-	ApiOptions *tfparts.APIOptionsModel `tfsdk:"api_options"`
+	tfparts.APIOptionsModel
 	tfparts.FetchMap
 }
 

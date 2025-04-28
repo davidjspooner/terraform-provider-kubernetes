@@ -10,9 +10,11 @@ import (
 )
 
 type APIOptionsModel struct {
-	Retry          job.RetryModel `tfsdk:"retry"`
-	FieldManager   types.String   `tfsdk:"field_manager"`
-	ForceConflicts types.Bool     `tfsdk:"force_conflicts"`
+	APIOptions struct {
+		Retry          job.RetryModel `tfsdk:"retry"`
+		FieldManager   types.String   `tfsdk:"field_manager"`
+		ForceConflicts types.Bool     `tfsdk:"force_conflicts"`
+	} `tfsdk:"api_options"`
 }
 
 func ApiOptionsResourceAttributes() map[string]rschema.Attribute {
@@ -82,13 +84,13 @@ func (model *APIOptionsModel) Options() *kube.APIClientOptions {
 		return nil
 	}
 	opt := &kube.APIClientOptions{
-		Retry: model.Retry,
+		Retry: model.APIOptions.Retry,
 	}
-	s := model.FieldManager.ValueString()
+	s := model.APIOptions.FieldManager.ValueString()
 	if s != "" {
 		opt.FieldManager = &s
 	}
-	b := model.ForceConflicts.ValueBool()
+	b := model.APIOptions.ForceConflicts.ValueBool()
 	opt.ForceConflicts = &b
 	return opt
 }

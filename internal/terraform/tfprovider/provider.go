@@ -35,12 +35,12 @@ type KubernetesResourceProvider struct {
 
 // KubernetesProviderModel describes the provider data model.
 type KubernetesProviderModel struct {
-	ConfigPaths           []types.String           `tfsdk:"config_paths"`
-	ConfigContext         types.String             `tfsdk:"config_context"`
-	ConfigContextAuthInfo types.String             `tfsdk:"config_context_auth_info"`
-	ConfigContextCluster  types.String             `tfsdk:"config_context_cluster"`
-	Namespace             types.String             `tfsdk:"namespace"`
-	DefaultApiOptions     *tfparts.APIOptionsModel `tfsdk:"api_options"`
+	ConfigPaths           []types.String `tfsdk:"config_paths"`
+	ConfigContext         types.String   `tfsdk:"config_context"`
+	ConfigContextAuthInfo types.String   `tfsdk:"config_context_auth_info"`
+	ConfigContextCluster  types.String   `tfsdk:"config_context_cluster"`
+	Namespace             types.String   `tfsdk:"namespace"`
+	tfparts.APIOptionsModel
 }
 
 func (p *KubernetesResourceProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -110,10 +110,6 @@ func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider
 	p.Shared.SetConfigContext(data.ConfigContext.ValueString())
 	p.Shared.SetNamespace(data.Namespace.ValueString())
 
-	if data.DefaultApiOptions == nil {
-		data.DefaultApiOptions = &tfparts.APIOptionsModel{}
-	}
-
 	var err error
 	defaultDefaults := &kube.APIClientOptions{
 		Retry: job.RetryModel{
@@ -125,7 +121,7 @@ func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider
 		FieldManager: job.PointerTo("terraform-provider-kubernetes"),
 	}
 
-	p.DefaultApiOptions, err = kube.MergeAPIOptions(defaultDefaults, data.DefaultApiOptions.Options())
+	p.DefaultApiOptions, err = kube.MergeAPIOptions(defaultDefaults, data.APIOptionsModel.Options())
 
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to initialize provider api options", err.Error())

@@ -41,7 +41,7 @@ type DataSourceKubeQuery struct {
 // KubeQueryModel describes the datasource data model.
 type KubeQueryModel struct {
 	tfparts.ShortMetadata
-	ApiOptions *tfparts.APIOptionsModel `tfsdk:"api_options"`
+	tfparts.APIOptionsModel
 	tfparts.FetchMap
 }
 
