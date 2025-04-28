@@ -27,7 +27,7 @@ func init() {
 
 // ResourceKubeConfig defines the resource implementation.
 type ResourceKubeConfig struct {
-	provider         *KubernetesResourceProvider
+	provider         *KubeProvider
 	tfTypeNameSuffix string
 }
 
@@ -76,7 +76,7 @@ func (r *ResourceKubeConfig) Configure(ctx context.Context, req resource.Configu
 	}
 
 	var ok bool
-	r.provider, ok = req.ProviderData.(*KubernetesResourceProvider)
+	r.provider, ok = req.ProviderData.(*KubeProvider)
 
 	if !ok {
 		resp.Diagnostics.AddError(

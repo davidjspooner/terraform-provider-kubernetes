@@ -17,11 +17,11 @@ import (
 )
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.
-var _ provider.Provider = &KubernetesResourceProvider{}
-var _ provider.ProviderWithFunctions = &KubernetesResourceProvider{}
+var _ provider.Provider = &KubeProvider{}
+var _ provider.ProviderWithFunctions = &KubeProvider{}
 
-// KubernetesResourceProvider defines the provider implementation.
-type KubernetesResourceProvider struct {
+// KubeProvider defines the provider implementation.
+type KubeProvider struct {
 	// version is set to the provider version on release, "dev" when the
 	// provider is built and ran locally, and "test" when running acceptance
 	// testing.
@@ -43,12 +43,12 @@ type KubernetesProviderModel struct {
 	tfparts.APIOptionsModel
 }
 
-func (p *KubernetesResourceProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
+func (p *KubeProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
 	resp.TypeName = p.typeName
 	resp.Version = p.version
 }
 
-func (p *KubernetesResourceProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
+func (p *KubeProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	attr := map[string]schema.Attribute{
 		"config_paths": schema.ListAttribute{
 			ElementType: types.StringType,
@@ -90,7 +90,7 @@ func MergeProviderAttributes(attrs ...map[string]schema.Attribute) map[string]sc
 	return merged
 }
 
-func (p *KubernetesResourceProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+func (p *KubeProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var data KubernetesProviderModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -153,19 +153,19 @@ func RegisterFunction(f func() function.Function) {
 	supportedFunctions = append(supportedFunctions, f)
 }
 
-func (p *KubernetesResourceProvider) Resources(ctx context.Context) []func() resource.Resource {
+func (p *KubeProvider) Resources(ctx context.Context) []func() resource.Resource {
 	lock.Lock()
 	defer lock.Unlock()
 	return supportedResources
 }
 
-func (p *KubernetesResourceProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p *KubeProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	lock.Lock()
 	defer lock.Unlock()
 	return supportedDataSources
 }
 
-func (p *KubernetesResourceProvider) Functions(ctx context.Context) []func() function.Function {
+func (p *KubeProvider) Functions(ctx context.Context) []func() function.Function {
 	lock.Lock()
 	defer lock.Unlock()
 	return supportedFunctions
@@ -173,7 +173,7 @@ func (p *KubernetesResourceProvider) Functions(ctx context.Context) []func() fun
 
 func NewProvider(version string) func() provider.Provider {
 	return func() provider.Provider {
-		return &KubernetesResourceProvider{
+		return &KubeProvider{
 			version:  version,
 			typeName: "kube",
 		}

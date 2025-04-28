@@ -28,7 +28,8 @@ type APIClientOptions struct {
 }
 
 type APIClientWrapper struct {
-	config                *rest.Config
+	restConfig            *rest.Config
+	rawConfig             api.Config
 	discovery             discovery.CachedDiscoveryInterface
 	dynamic               dynamic.Interface
 	configContext         string
@@ -214,19 +215,24 @@ func (shared *APIClientWrapper) reloadConfig(ctx context.Context) error {
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loader, overrides)
 
 	var err error
-	shared.config, err = clientConfig.ClientConfig()
+	shared.restConfig, err = clientConfig.ClientConfig()
 	if err != nil {
 		return err
 	}
 
-	innerDiscovery, err := discovery.NewDiscoveryClientForConfig(shared.config)
+	shared.rawConfig, err = clientConfig.RawConfig()
+	if err != nil {
+		return err
+	}
+
+	innerDiscovery, err := discovery.NewDiscoveryClientForConfig(shared.restConfig)
 	if err != nil {
 		return err
 	}
 
 	shared.discovery = memory.NewMemCacheClient(innerDiscovery)
 
-	shared.dynamic, err = dynamic.NewForConfig(shared.config)
+	shared.dynamic, err = dynamic.NewForConfig(shared.restConfig)
 	if err != nil {
 		return err
 	}
@@ -307,7 +313,16 @@ func (shared *APIClientWrapper) fetchResourceTypes() error {
 
 func (shared *APIClientWrapper) GetNamespace(namespace *string) string {
 	if namespace == nil || *namespace == "" {
-		return shared.namespace
+		context, ok := shared.rawConfig.Contexts[shared.rawConfig.CurrentContext]
+		if ok {
+			namespace = &context.Namespace
+		}
+		if *namespace == "" {
+			namespace = job.PointerTo(shared.namespace)
+		}
+		if *namespace == "" {
+			namespace = job.PointerTo("default")
+		}
 	}
 	return *namespace
 }
@@ -382,4 +397,38 @@ func (shared *APIClientWrapper) Delete(ctx context.Context, key *ResourceKey, ap
 	}
 
 	return nil
+}
+
+type ClusterInfo struct {
+	Cluster   string
+	Host      string
+	User      string
+	Namespace string
+}
+
+func (shared *APIClientWrapper) GetCurrentContext() (*ClusterInfo, error) {
+
+	shared.lock.Lock()
+	defer shared.lock.Unlock()
+
+	if shared.discovery == nil || shared.dynamic == nil {
+		err := shared.reloadConfig(context.Background())
+		if err != nil {
+			return nil, err
+		}
+	}
+	context, ok := shared.rawConfig.Contexts[shared.rawConfig.CurrentContext]
+	if !ok {
+		return nil, fmt.Errorf("current context %s not found in kubeconfig", shared.rawConfig.CurrentContext)
+	}
+	ci := &ClusterInfo{
+		Cluster:   shared.rawConfig.CurrentContext,
+		Host:      context.Cluster,
+		User:      context.AuthInfo, //TODO
+		Namespace: context.Namespace,
+	}
+	if ci.Namespace == "" {
+		ci.Namespace = "default"
+	}
+	return ci, nil
 }

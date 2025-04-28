@@ -14,7 +14,7 @@ import (
 )
 
 type DataSourceBase[implType kube.StateInteraface] struct {
-	Provider         *KubernetesResourceProvider
+	Provider         *KubeProvider
 	tfTypeNameSuffix string
 	schema           schema.Schema
 }
@@ -24,7 +24,7 @@ func (h *DataSourceBase[implType]) Configure(ctx context.Context, req datasource
 	if req.ProviderData == nil {
 		return
 	}
-	provider, ok := req.ProviderData.(*KubernetesResourceProvider)
+	provider, ok := req.ProviderData.(*KubeProvider)
 	if !ok {
 		resp.Diagnostics.AddError("Unexpected Type", "Expected provider data to be of type *KubernetesResourceProvider")
 		return
