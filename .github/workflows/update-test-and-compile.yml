@@ -1,0 +1,60 @@
+name: Update, Test and Compile
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/docs/**' # Ignore changes in the docs directory to prevent loops
+  pull_request:
+
+jobs:
+  test-and-compile:
+    if: github.actor != 'github-actions[bot]' # Prevent loop caused by bot commits
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 'stable' # Use the latest stable version of Go
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Update Go modules
+        run: |
+          # This will update the go.mod file with the latest versions
+          go get -u all
+          go mod tidy
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Compile
+        run: go build ./...
+
+      - name: Install Terraform Docs
+        run: |
+          curl -sSLo terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/latest/download/terraform-docs-$(uname -s)-$(uname -m).tar.gz
+          tar -xzf terraform-docs.tar.gz
+          chmod +x terraform-docs
+          sudo mv terraform-docs /usr/local/bin/
+
+      - name: Generate Terraform Docs
+        run: |
+          mkdir -p docs
+          terraform-docs markdown table --output-file docs/README.md .
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add go.mod go.sum docs/
+          git commit -m "Update Go modules and documentation" || echo "No changes to commit"
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
