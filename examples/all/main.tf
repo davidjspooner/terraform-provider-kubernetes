@@ -118,16 +118,3 @@ data "kube_query" "test" {
 output "namespace" {
     value = data.kube_query.test.output.data
 }
-
-data "kube_current_context" "current" {
-    # This will be the current context
-}
-output "current_context" {
-    value = data.kube_current_context.current.authinfo
-}
-output "current_context_cluster" {
-    value = data.kube_current_context.current.cluster
-}
-output "current_context_user" {
-    value = data.kube_current_context.current.namespace
-}
